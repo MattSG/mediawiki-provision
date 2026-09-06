@@ -34,6 +34,10 @@ function Invoke-Up {
     Set-PerformanceAndCaching
     Complete-Installation
 
+    if ($DisableJobRunner) { Unregister-JobRunnerTask } elseif ($EnableJobRunner) { Register-JobRunnerTask }
+    if ($DisableLogRotation) { Unregister-LogRotationTask } elseif ($EnableLogRotation) { Register-LogRotationTask }
+    if ($DisableBackups) { Unregister-BackupTask } elseif ($EnableBackups) { Register-BackupTask }
+
     $wikiUrl = if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort/" }
     $lines = @(
         "Generated $(Get-Date -Format o)",
@@ -45,12 +49,22 @@ function Invoke-Up {
     $lines += "DB user pass:    $($Script:DbUserPassword)"
     $lines += "Install root:    $($Script:Root)  (back this whole folder up)"
     $lines -join "`r`n" | Set-Content -Path $Script:CredFile
-    icacls $Script:CredFile /inheritance:r /grant:r "$($env:USERNAME):F" | Out-Null
+    icacls $Script:CredFile /inheritance:r /grant:r "$($env:USERNAME):F" "SYSTEM:F" | Out-Null
 
     Write-Step 'Done.'
     Write-Note "Wiki:        $wikiUrl"
     Write-Note "Admin user:  $WikiAdminUser"
     Write-Note "Credentials: $($Script:CredFile)"
+
+    Write-Host "`n--- Production checklist ---" -ForegroundColor Cyan
+    Write-Host "[$(if ($Environment -eq 'Prod') {'x'} else {' '})] -Environment Prod set (disables debug output, enables opcache timestamp skip)"
+    Write-Host "[$(if ($Script:UseHttps) {'x'} else {' '})] HTTPS configured (plain HTTP redirects to it when set)"
+    Write-Host "[ ] Log in and change the generated admin password above to one you'll remember"
+    Write-Host "[$(if (Get-ScheduledTask -TaskName 'RunJobs' -TaskPath $Script:TaskFolder -ErrorAction SilentlyContinue) {'x'} else {' '})] Background job runner (-EnableJobRunner) - notifications/deferred work processed on a schedule, not just on page views"
+    Write-Host "[$(if (Get-ScheduledTask -TaskName 'LogRotation' -TaskPath $Script:TaskFolder -ErrorAction SilentlyContinue) {'x'} else {' '})] Log rotation (-EnableLogRotation)"
+    Write-Host "[$(if (Get-ScheduledTask -TaskName 'Backup' -TaskPath $Script:TaskFolder -ErrorAction SilentlyContinue) {'x'} else {' '})] Automated backups (-EnableBackups) - DB dump + LocalSettings.php/images, see -BackupPath"
+    if ($sso.Enabled) { Write-Host '  -> SSO is enabled: if this was set up against a test/throwaway Entra app registration, rotate or delete it before real use' -ForegroundColor Yellow }
+    Write-Host "Scheduled tasks (if any) live under Task Scheduler folder '$($Script:TaskFolder)'."
 }
 
 function Invoke-Down {
@@ -92,11 +106,27 @@ function Invoke-Down {
         }
     }
 
+    if (-not $KeepData) {
+        Unregister-JobRunnerTask
+        Unregister-LogRotationTask
+        Unregister-BackupTask
+    }
+
     if (-not $KeepData -and $state.rootCreated -and (Test-Path $Script:Root)) {
         Write-Note "Deleting $($Script:Root) (this script created it)."
         Remove-Item -Recurse -Force $Script:Root -ErrorAction SilentlyContinue
     }
     Write-Step 'Down.'
+}
+
+# Runs one backup on demand (-Action Backup) - the same function the scheduled backup task calls.
+function Invoke-Backup {
+    # No Assert-Admin here (unlike Up/Down): the scheduled backup task runs as NT AUTHORITY\SYSTEM,
+    # which has full effective privileges but is not itself a member of BUILTIN\Administrators, so
+    # WindowsPrincipal.IsInRole(Administrator) reports false for it - Assert-Admin would wrongly
+    # reject every scheduled run. Backup only reads DB/files and writes to BackupPath, no admin
+    # operation (service install, etc.) needed.
+    Invoke-WikiBackup
 }
 
 function Invoke-Status {

@@ -88,15 +88,13 @@ KeepAliveTimeout 5
     # quoted directive values on Windows - always use forward slashes in httpd.conf paths.
     $phpCgiSlash = $phpCgi -replace '\\', '/'
     $phpDirSlash = $Script:PhpDir -replace '\\', '/'
-    $vhost = @"
-$($Script:MarkerBegin)
-<IfModule fcgid_module>
-  FcgidInitialEnv PHPRC "$phpDirSlash"
-  AddHandler fcgid-script .php
-  FcgidWrapper "$phpCgiSlash" .php
-</IfModule>
-
-<VirtualHost *:$HttpPort>
+    $hostName = if ($Script:UseHttps) { ([Uri]$PublicUrl).Host } else { $null }
+    $httpBody = if ($Script:UseHttps) {
+        # HTTPS is configured - plain HTTP redirects to it rather than serving content over both,
+        # so nothing sensitive (login, session cookies) ever goes out unencrypted.
+        "    Redirect permanent `"/`" `"$PublicUrl/`""
+    } else {
+        @"
     DocumentRoot "$($Script:WwwDir -replace '\\','/')"
     <Directory "$($Script:WwwDir -replace '\\','/')">
         Options FollowSymLinks ExecCGI
@@ -115,13 +113,24 @@ $($Script:MarkerBegin)
         ExpiresByType text/css "access plus 7 days"
         ExpiresByType application/javascript "access plus 7 days"
     </IfModule>
+"@
+    }
+    $vhost = @"
+$($Script:MarkerBegin)
+<IfModule fcgid_module>
+  FcgidInitialEnv PHPRC "$phpDirSlash"
+  AddHandler fcgid-script .php
+  FcgidWrapper "$phpCgiSlash" .php
+</IfModule>
+
+<VirtualHost *:$HttpPort>
+$httpBody
 
     ErrorLog "$($Script:LogsDir -replace '\\','/')/mediawiki-error.log"
     CustomLog "$($Script:LogsDir -replace '\\','/')/mediawiki-access.log" common
 </VirtualHost>
 "@
     if ($Script:UseHttps) {
-        $hostName = ([Uri]$PublicUrl).Host
         $vhost += @"
 
 <VirtualHost *:443>
@@ -133,10 +142,21 @@ $($Script:MarkerBegin)
         Require all granted
         DirectoryIndex index.php
     </Directory>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript application/json
+    </IfModule>
+    <IfModule mod_expires.c>
+        ExpiresActive On
+        ExpiresByType image/png "access plus 30 days"
+        ExpiresByType image/jpeg "access plus 30 days"
+        ExpiresByType text/css "access plus 7 days"
+        ExpiresByType application/javascript "access plus 7 days"
+    </IfModule>
 
     SSLEngine on
     SSLCertificateFile "$($CertPath -replace '\\','/')"
     SSLCertificateKeyFile "$($CertKeyPath -replace '\\','/')"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
     ErrorLog "$($Script:LogsDir -replace '\\','/')/mediawiki-ssl-error.log"
     CustomLog "$($Script:LogsDir -replace '\\','/')/mediawiki-ssl-access.log" common
@@ -155,6 +175,7 @@ $($Script:MarkerBegin)
         $State.apacheServiceCreated = $true
         Save-State $State
     }
+    Set-Service -Name $Script:ApacheServiceName -StartupType Automatic
     Restart-Service -Name $Script:ApacheServiceName -Force
     Write-Note "Apache service '$($Script:ApacheServiceName)' running on port $HttpPort."
 }

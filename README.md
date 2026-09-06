@@ -21,7 +21,8 @@ actual implementation from `lib/`, one file per concern:
 | `lib/mysql.ps1` | MySQL install, or `-UseExternalDb` connection |
 | `lib/python.ps1` | Python (embeddable) for SyntaxHighlight |
 | `lib/mediawiki.ps1` | Core, extensions/skins, installer, caching/perf settings |
-| `lib/orchestration.ps1` | `Invoke-Up` / `Invoke-Down` / `Invoke-Status` |
+| `lib/scheduledtasks.ps1` | Optional job-runner/log-rotation/backup Task Scheduler tasks |
+| `lib/orchestration.ps1` | `Invoke-Up` / `Invoke-Down` / `Invoke-Status` / `Invoke-Backup` |
 
 `setup-local-https-test.ps1` is a separate, standalone script for local HTTPS
 testing (see below) — it never runs as part of `Up`/`Down`.
@@ -52,7 +53,8 @@ testing (see below) — it never runs as part of `Up`/`Down`.
 
 Everything the script creates (Apache, PHP, MySQL, Python, the wiki, cache,
 logs, download cache) lives under one root folder (`C:\MediaWikiStack` by
-default) so the whole install can be backed up or wiped as a unit.
+default) so the whole install can be backed up or wiped as a unit. Both
+Windows services are set to start automatically on boot.
 
 ## Usage
 
@@ -112,8 +114,10 @@ is dropped from it.
 ### HTTPS
 
 Pass `-PublicUrl https://your.host`, `-CertPath`, and `-CertKeyPath` (PEM
-format) together to serve over 443 with a real certificate alongside plain
-HTTP. For local testing without a real certificate, use the companion script:
+format) together to serve over 443 with a real certificate. Plain HTTP then
+301-redirects to the HTTPS URL instead of serving content over both, and the
+HTTPS vhost sends `Strict-Transport-Security`. For local testing without a
+real certificate, use the companion script:
 
 ```powershell
 .\setup-local-https-test.ps1                      # generates + trusts a self-signed
@@ -145,6 +149,31 @@ On the Entra side, register an App Registration with:
   against the exact URL MediaWiki generates if you change that)
 - A client secret under Certificates & secrets
 - Default openid/profile/email delegated permissions (granted automatically)
+
+### Production QoL: job runner, log rotation, backups
+
+Three independent, optional Task Scheduler tasks, all under one folder
+(`\MediaWikiStack\`), all prompted for interactively on first install
+(default yes for job runner/log rotation, default no for backups), all
+reversible later with the matching `-Disable*` switch:
+
+- `-EnableJobRunner` (+ `-JobRunnerIntervalMinutes`, default 5) — runs
+  `maintenance/run.php runJobs` on a schedule instead of relying on lumpy
+  request-triggered execution (matters for Echo notifications and other
+  deferred work).
+- `-EnableLogRotation` — daily task that archives Apache/PHP/MySQL logs over
+  20MB and deletes archives older than 30 days.
+- `-EnableBackups` (+ `-BackupPath`, `-BackupRetentionDays`, default 14) —
+  daily DB dump (`mysqldump`) + `LocalSettings.php`/`images` archive. Run one
+  on demand with `.\provision-mediawiki.ps1 -Action Backup`. For
+  `-UseExternalDb`, automated backups need a `mysqldump` client on `PATH`;
+  the external DB admin password isn't stored in the scheduled task itself
+  (it'd be plaintext-visible in Task Scheduler's UI), so wire that up
+  separately if you need unattended external-DB backups.
+
+These tasks run as `SYSTEM`, which is why `credentials.generated.txt` is
+readable by `SYSTEM` in addition to the invoking user — the backup task
+needs the DB password to run `mysqldump` unattended.
 
 ### Key parameters
 

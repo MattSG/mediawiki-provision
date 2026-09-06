@@ -36,7 +36,7 @@ function Save-DbCredentials {
     if ($RootPass) { $lines += "DB root pass:    $RootPass" }
     $lines += "DB user pass:    $UserPass"
     $lines -join "`r`n" | Set-Content -Path $Script:CredFile
-    icacls $Script:CredFile /inheritance:r /grant:r "$($env:USERNAME):F" | Out-Null
+    icacls $Script:CredFile /inheritance:r /grant:r "$($env:USERNAME):F" "SYSTEM:F" | Out-Null
 }
 
 function Assert-Admin {

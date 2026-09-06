@@ -83,6 +83,7 @@ max_heap_table_size=64M
         $State.mysqlServiceCreated = $true
         Save-State $State
     }
+    Set-Service -Name $Script:MysqlServiceName -StartupType Automatic
     Start-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue
 
     $mysqlExe = Join-Path $Script:MysqlDir 'bin\mysql.exe'

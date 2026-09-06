@@ -32,5 +32,23 @@ function Invoke-SetupWizard {
             if (-not $Script:EntraClientSecret) { $Script:EntraClientSecret = Read-Host 'Entra client secret' -AsSecureString }
         }
     }
+
+    Write-Host "`n--- Optional production QoL (all skippable, all reversible later via -Disable*) ---" -ForegroundColor Cyan
+    if (-not $PSBoundParameters.ContainsKey('EnableJobRunner')) {
+        $resp = Read-Host 'Run background jobs (notifications etc.) on a schedule instead of only on page views? [Y/n]'
+        if ($resp -notmatch '^[Nn]') { $Script:EnableJobRunner = $true }
+    }
+    if (-not $PSBoundParameters.ContainsKey('EnableLogRotation')) {
+        $resp = Read-Host 'Enable automatic log rotation? [Y/n]'
+        if ($resp -notmatch '^[Nn]') { $Script:EnableLogRotation = $true }
+    }
+    if (-not $PSBoundParameters.ContainsKey('EnableBackups')) {
+        $resp = Read-Host 'Enable daily automated backups (DB dump + LocalSettings.php/images)? [y/N]'
+        if ($resp -match '^[Yy]') {
+            $Script:EnableBackups = $true
+            $resp = Read-Host "Backup retention in days [$BackupRetentionDays]"
+            if ($resp -match '^\d+$') { $Script:BackupRetentionDays = [int]$resp }
+        }
+    }
     Write-Host ''
 }

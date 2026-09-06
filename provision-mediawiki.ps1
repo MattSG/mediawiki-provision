@@ -53,7 +53,7 @@
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [ValidateSet('Up', 'Down', 'Status', 'Restart')]
+    [ValidateSet('Up', 'Down', 'Status', 'Restart', 'Backup')]
     [string]$Action = 'Up',
 
     [switch]$KeepData,
@@ -103,6 +103,22 @@ param(
     # -EnableEntraSso repeated every time - this explicitly turns a previously-enabled SSO back off.
     [switch]$DisableEntraSso,
 
+    # Production QoL - all optional, all registered under one Task Scheduler folder
+    # (\MediaWikiStack\, see lib/scheduledtasks.ps1). Prompted for interactively on first
+    # install if not given and not -NonInteractive; the -Disable* switches turn one back off
+    # on a later re-run (idempotent - re-running with none of these just leaves things as they are).
+    [switch]$EnableJobRunner,          # runs maintenance/run.php runJobs periodically instead of
+    [switch]$DisableJobRunner,         # relying on lumpy request-triggered job execution
+    [int]$JobRunnerIntervalMinutes = 5,
+
+    [switch]$EnableLogRotation,        # trims/archives Apache+MySQL+PHP logs so they don't grow forever
+    [switch]$DisableLogRotation,
+
+    [switch]$EnableBackups,            # daily DB dump + LocalSettings.php/images archive
+    [switch]$DisableBackups,
+    [string]$BackupPath = $null,       # default: <InstallRoot>\_provisioning\backups
+    [int]$BackupRetentionDays = 14,
+
     # Wikimedia's extension mirrors are tagged by REL branch, e.g. REL1_43. Bump this when a
     # newer stable branch is out - everything else derives from it via GitHub zip archives.
     [string]$MwBranch = 'REL1_43',
@@ -150,6 +166,7 @@ $Script:DownloadDir  = Join-Path $Script:ProvDir 'downloads'
 $Script:LogFile      = Join-Path $Script:ProvDir 'provision.log'
 $Script:StateFile    = Join-Path $Script:ProvDir 'install-state.json'
 $Script:CredFile     = Join-Path $Script:ProvDir 'credentials.generated.txt'
+if (-not $BackupPath) { $BackupPath = Join-Path $Script:ProvDir 'backups' }
 
 $Script:ApacheServiceName = 'MediaWikiApache'
 $Script:MysqlServiceName  = 'MediaWikiMySQL'
@@ -157,6 +174,9 @@ $Script:DbName            = 'mediawiki'
 $Script:DbUser            = 'mediawiki'
 $Script:MarkerBegin       = '# === provision-mediawiki.ps1 managed block: BEGIN (do not edit by hand) ==='
 $Script:MarkerEnd         = '# === provision-mediawiki.ps1 managed block: END ==='
+# Every scheduled task this script creates lives under this one Task Scheduler folder.
+$Script:TaskFolder        = '\MediaWikiStack\'
+$Script:SelfPath          = $PSCommandPath
 
 # Curated, deliberately LEAN extension set for a small trusted-team dev wiki - every entry
 # below earns its place; each cut is recorded so it isn't re-added by accident.
@@ -202,7 +222,7 @@ $Script:ZipSkins = @('Vector')
 # download helpers) must load first - everything else is independent until Invoke-Up runs.
 # ---------------------------------------------------------------------------
 $Script:LibDir = Join-Path $PSScriptRoot 'lib'
-foreach ($module in @('common', 'wizard', 'sso', 'apache', 'php', 'mysql', 'python', 'mediawiki', 'orchestration')) {
+foreach ($module in @('common', 'wizard', 'sso', 'scheduledtasks', 'apache', 'php', 'mysql', 'python', 'mediawiki', 'orchestration')) {
     . (Join-Path $Script:LibDir "$module.ps1")
 }
 
@@ -211,5 +231,6 @@ switch ($Action) {
     'Down'    { Invoke-Down }
     'Status'  { Invoke-Status }
     'Restart' { $KeepData = $true; Invoke-Down; Invoke-Up }
+    'Backup'  { Invoke-Backup }
 }
 
