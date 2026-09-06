@@ -63,6 +63,7 @@ param(
     [string]$PhpZipUrl       = 'https://downloads.php.net/~windows/releases/php-8.2.33-nts-Win32-vs16-x64.zip',
     [string]$ApcuZipUrl      = 'https://downloads.php.net/~windows/pecl/releases/apcu/5.1.28/php_apcu-5.1.28-8.2-nts-vs16-x64.zip',
     [string]$MySqlZipUrl     = 'https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11-winx64.zip',
+    [string]$PythonZipUrl    = 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip',
 
     [switch]$Force,
 
@@ -80,6 +81,7 @@ $Script:Root         = $InstallRoot
 $Script:ApacheDir    = Join-Path $Script:Root 'apache'
 $Script:PhpDir       = Join-Path $Script:Root 'php'
 $Script:MysqlDir     = Join-Path $Script:Root 'mysql'
+$Script:PythonDir    = Join-Path $Script:Root 'python'
 $Script:WwwDir       = Join-Path $Script:Root 'www'
 $Script:CacheDir     = Join-Path $Script:Root 'cache'
 $Script:LogsDir      = Join-Path $Script:Root 'logs'
@@ -112,15 +114,14 @@ $Script:ZipExtensions = @(
     'LabeledSectionTransclusion',  # reuse page sections across docs (reduce duplication)
     'AbuseFilter',                 # rule-based edit safety net (e.g. mass blank/rapid-edit guard)
     'CheckUser',                   # admin audit trail of which account/IP made an edit
-    'Math'                         # <math> LaTeX/MathML rendering
+    'Math',                        # <math> LaTeX/MathML rendering
+    'RevisionSlider',              # visual diff/revision-comparison slider
+    'TwoColConflict',              # side-by-side edit-conflict resolution UI
+    'Echo',                        # talk-page/mention notifications
+    # Needs a Python interpreter to run its bundled, self-contained Pygments zipapp - provisioned
+    # into $Script:PythonDir by Install-Python (a real Windows Server box has none by default).
+    'SyntaxHighlight_GeSHi'
 )
-# SyntaxHighlight_GeSHi needs a Python interpreter (bundles Pygments) - not part of a default
-# Windows Server install, so only add it when one is actually on PATH.
-if (Get-Command python, python3, py -ErrorAction SilentlyContinue | Select-Object -First 1) {
-    $Script:ZipExtensions += 'SyntaxHighlight_GeSHi'
-} else {
-    Write-Warning 'No Python interpreter found on PATH - skipping SyntaxHighlight_GeSHi (code block highlighting). Install Python and re-run to add it.'
-}
 
 function Write-Step { param([string]$Message) $l = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $Message; Write-Host $l -ForegroundColor Cyan; Add-Content -Path $Script:LogFile -Value $l -ErrorAction SilentlyContinue }
 function Write-Note { param([string]$Message) $l = "         {0}" -f $Message; Write-Host $l -ForegroundColor DarkGray; Add-Content -Path $Script:LogFile -Value $l -ErrorAction SilentlyContinue }
@@ -524,6 +525,22 @@ FLUSH PRIVILEGES;
 }
 
 # ---------------------------------------------------------------------------
+# Python (embeddable, zip-only - no installer/PATH change) for SyntaxHighlight_GeSHi's
+# bundled, self-contained Pygments zipapp.
+# ---------------------------------------------------------------------------
+function Install-Python {
+    $pythonExe = Join-Path $Script:PythonDir 'python.exe'
+    if (Test-Path $pythonExe) { Write-Note 'Python already present.'; return }
+    Write-Step 'Downloading + extracting Python (embeddable package)...'
+    $zip = Join-Path $Script:DownloadDir 'python-embed.zip'
+    Get-RemoteFile -Url $PythonZipUrl -Destination $zip -VendorPageOnFailure 'https://www.python.org/downloads/windows/ (find the "Windows embeddable package (64-bit)" link)'
+    # The embeddable zip has no single top-level folder - extract it flat into PythonDir rather
+    # than going through Expand-ToDir's single-folder-unwrap logic.
+    Expand-Archive -Path $zip -DestinationPath $Script:PythonDir -Force
+    Write-Note "Python: $pythonExe"
+}
+
+# ---------------------------------------------------------------------------
 # MediaWiki core + extensions (GitHub zip archives - no git dependency)
 # ---------------------------------------------------------------------------
 function Get-GitHubZip {
@@ -703,6 +720,17 @@ $debugLine
         # wfLoadExtension call first (see extensions/SemanticMediaWiki/docs/INSTALL.md).
         $block += "`nwfLoadExtension( 'SemanticMediaWiki' );`nenableSemantics( 'localhost:$HttpPort' );"
     }
+    $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
+    $pythonExe = Join-Path $Script:PythonDir 'python.exe'
+    if ((Test-Path $syntaxHighlightDir) -and (Test-Path $pythonExe)) {
+        # SyntaxHighlight's bundled `pygmentize` is a self-contained Python zipapp (shebang
+        # #!/usr/bin/env python3) - Windows can't execute that directly, so point $wgPygmentizePath
+        # at a small .bat wrapper that runs it through our own embedded python.exe instead.
+        $wrapperPath = Join-Path $Script:PythonDir 'pygmentize.bat'
+        $pygmentizePath = Join-Path $syntaxHighlightDir 'pygments\pygmentize'
+        "@echo off`r`n`"$pythonExe`" `"$pygmentizePath`" %*" | Set-Content -Path $wrapperPath -Encoding ASCII
+        $block += "`n`$wgPygmentizePath = '$wrapperPath';"
+    }
     $block += "`n$($Script:MarkerEnd)"
     Add-ManagedSettingsBlock -Block $block
 }
@@ -735,6 +763,7 @@ function Invoke-Up {
     Set-PhpIni
     Set-ApacheConfig -State $state
     Install-MySql -State $state
+    Install-Python
 
     Get-MediaWikiCore -State $state
     Install-SemanticMediaWiki
