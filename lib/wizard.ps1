@@ -23,6 +23,31 @@ function Invoke-SetupWizard {
             else { Write-Warn "Logo file not found: $resp - skipping." }
         }
     }
+    if (-not $PSBoundParameters.ContainsKey('Environment')) {
+        $resp = Read-Host "Is this a production or dev/test install? [prod/dev] [$Environment]"
+        if ($resp -match '^[Pp]') { $Script:Environment = 'Prod' } elseif ($resp -match '^[Dd]') { $Script:Environment = 'Dev' }
+    }
+    if (-not $PSBoundParameters.ContainsKey('PublicUrl') -and -not $Script:UseHttps) {
+        $resp = Read-Host 'Set up HTTPS now? [y/N]'
+        if ($resp -match '^[Yy]') {
+            $hostname = Read-Host 'Public hostname (e.g. wiki.company.com)'
+            if ($hostname) {
+                $resp = Read-Host 'Do you already have a real certificate (.pem) for it? [y/N] (N generates + locally trusts a self-signed one, for testing only)'
+                if ($resp -match '^[Yy]') {
+                    $Script:CertPath = Read-Host 'Path to certificate .pem file'
+                    $Script:CertKeyPath = Read-Host 'Path to certificate private key .pem file'
+                } else {
+                    Write-Host "Generating + trusting a self-signed certificate for '$hostname'..." -ForegroundColor DarkGray
+                    $helper = Join-Path (Split-Path $Script:SelfPath -Parent) 'setup-local-https-test.ps1'
+                    $certDir = Join-Path $Script:ProvDir 'certs'
+                    & $helper -HostName $hostname -OutDir $certDir
+                    $Script:CertPath = Join-Path $certDir 'cert.pem'
+                    $Script:CertKeyPath = Join-Path $certDir 'key.pem'
+                }
+                $Script:PublicUrl = "https://$hostname"
+            }
+        }
+    }
     if (-not $PSBoundParameters.ContainsKey('EnableEntraSso')) {
         $resp = Read-Host 'Enable Entra ID (Azure AD) SSO login? [y/N]'
         if ($resp -match '^[Yy]') {
@@ -51,4 +76,24 @@ function Invoke-SetupWizard {
         }
     }
     Write-Host ''
+}
+
+# Final recap before any actual work starts - same gate as the wizard (fresh install, interactive)
+# so a first-time "one and done" run gets a chance to bail out before ~2-3 minutes of downloads.
+function Show-SetupSummary {
+    if ($NonInteractive -or $Force) { return }
+    if (Test-Path (Join-Path $Script:WwwDir 'LocalSettings.php')) { return }
+
+    Write-Host "`n=== About to provision ===" -ForegroundColor Cyan
+    Write-Host "  Site name:     $SiteName"
+    Write-Host "  Admin user:    $WikiAdminUser"
+    Write-Host "  Environment:   $Environment"
+    Write-Host "  URL:           $(if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort/" })"
+    Write-Host "  Database:      $(if ($UseExternalDb) { "external ($DbHost`:$DbPort)" } else { 'local MySQL (this script installs it)' })"
+    Write-Host "  Entra SSO:     $(if ($EnableEntraSso) { 'enabled' } else { 'disabled' })"
+    Write-Host "  Job runner:    $(if ($EnableJobRunner) { 'enabled' } else { 'disabled' })"
+    Write-Host "  Log rotation:  $(if ($EnableLogRotation) { 'enabled' } else { 'disabled' })"
+    Write-Host "  Backups:       $(if ($EnableBackups) { "enabled ($BackupRetentionDays days retention)" } else { 'disabled' })"
+    Write-Host "  Install root:  $Script:Root"
+    Read-Host "`nPress Enter to install, Ctrl+C to abort"
 }

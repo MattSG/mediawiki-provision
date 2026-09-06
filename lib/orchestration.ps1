@@ -7,6 +7,8 @@ function Invoke-Up {
     Assert-Admin
     Test-PreexistingInfrastructure
     Invoke-SetupWizard
+    Set-HttpsFlag  # wizard may have just set PublicUrl/CertPath/CertKeyPath itself
+    Show-SetupSummary
     $rootPreexisted = Test-Path $Script:Root
     New-Item -ItemType Directory -Force -Path $Script:ProvDir, $Script:DownloadDir | Out-Null
     $state = Get-State

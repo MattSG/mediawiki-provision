@@ -85,10 +85,16 @@ actually in effect discoverable on the next re-run.
 
 ### Interactive setup
 
-On a first install (no `LocalSettings.php` yet), `Up` asks for the wiki
-name/title, admin username, and an optional logo file — Enter accepts the
-default. Anything you pass explicitly via parameters isn't asked again.
-`-NonInteractive` or `-Force` skip the wizard entirely.
+Running `.\provision-mediawiki.ps1 -Action Up` with no other parameters is a
+genuinely complete one-shot setup: on a first install (no `LocalSettings.php`
+yet) it asks for the wiki name/title, admin username, an optional logo,
+Dev/Prod, whether to set up HTTPS right now (offering to generate and locally
+trust a self-signed certificate on the spot if you don't have a real one
+yet), Entra ID SSO, and each of the optional production tasks below - then
+shows a summary of everything it's about to do and waits for you to confirm
+before touching anything. Anything you pass explicitly via parameters isn't
+asked again. `-NonInteractive` or `-Force` skip the wizard and summary
+entirely.
 
 ### Safety: pre-existing Apache/MySQL
 

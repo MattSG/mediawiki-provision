@@ -142,13 +142,19 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$Script:UseHttps = [bool]($PublicUrl -and $CertPath -and $CertKeyPath)
-if ($Script:UseHttps) {
-    if ($PublicUrl -notmatch '^https://') { throw "-PublicUrl must start with https:// when -CertPath/-CertKeyPath are given (got: $PublicUrl)" }
-    foreach ($p in @($CertPath, $CertKeyPath)) { if (-not (Test-Path $p)) { throw "Cert file not found: $p" } }
-} elseif ($PublicUrl -or $CertPath -or $CertKeyPath) {
-    throw '-PublicUrl, -CertPath, and -CertKeyPath must all be given together for HTTPS, or all omitted.'
+# A function (not inline code) because the interactive wizard can also set $PublicUrl/$CertPath/
+# $CertKeyPath (offering to generate a local test cert on the spot) - Invoke-Up re-runs this
+# right after the wizard so $Script:UseHttps reflects whichever way the values got set.
+function Set-HttpsFlag {
+    $Script:UseHttps = [bool]($PublicUrl -and $CertPath -and $CertKeyPath)
+    if ($Script:UseHttps) {
+        if ($PublicUrl -notmatch '^https://') { throw "-PublicUrl must start with https:// when -CertPath/-CertKeyPath are given (got: $PublicUrl)" }
+        foreach ($p in @($CertPath, $CertKeyPath)) { if (-not (Test-Path $p)) { throw "Cert file not found: $p" } }
+    } elseif ($PublicUrl -or $CertPath -or $CertKeyPath) {
+        throw '-PublicUrl, -CertPath, and -CertKeyPath must all be given together for HTTPS, or all omitted.'
+    }
 }
+Set-HttpsFlag
 
 # ---------------------------------------------------------------------------
 # STEP 1: Centralized layout - everything lives under $InstallRoot for easy backup.
