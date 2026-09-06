@@ -8,6 +8,30 @@ function Invoke-SetupWizard {
 
     Write-Host "`n=== MediaWiki setup - press Enter to accept the default shown in [brackets] ===" -ForegroundColor Cyan
 
+    if (-not $PSBoundParameters.ContainsKey('InstallRoot')) {
+        $resp = Read-Host "Install folder - everything lives under here for easy backup [$InstallRoot]"
+        if ($resp) { $Script:InstallRoot = $resp }
+    }
+    Set-Layout  # so anything below this point (e.g. the HTTPS section's cert directory) uses
+                # wherever InstallRoot actually ended up, not the pre-wizard default.
+    if (-not $PSBoundParameters.ContainsKey('HttpPort')) {
+        $resp = Read-Host "HTTP port [$HttpPort]"
+        if ($resp -match '^\d+$') { $Script:HttpPort = [int]$resp }
+    }
+    if (-not $PSBoundParameters.ContainsKey('UseExternalDb')) {
+        $resp = Read-Host 'Use an existing MySQL instance instead of installing one here? [y/N]'
+        if ($resp -match '^[Yy]') {
+            $Script:UseExternalDb = $true
+            $Script:DbHost = Read-Host "Database host [$DbHost]" | ForEach-Object { if ($_) { $_ } else { $DbHost } }
+            $resp = Read-Host "Database port [$DbPort]"
+            if ($resp -match '^\d+$') { $Script:DbPort = [int]$resp }
+            $Script:ExternalDbAdminUser = Read-Host "Admin username on that database [$ExternalDbAdminUser]" | ForEach-Object { if ($_) { $_ } else { $ExternalDbAdminUser } }
+            $Script:ExternalDbAdminPassword = Read-Host 'Admin password on that database'
+        } else {
+            $resp = Read-Host "MySQL port [$DbPort]"
+            if ($resp -match '^\d+$') { $Script:DbPort = [int]$resp }
+        }
+    }
     if (-not $PSBoundParameters.ContainsKey('SiteName')) {
         $resp = Read-Host "Wiki name/title [$SiteName]"
         if ($resp) { $Script:SiteName = $resp }

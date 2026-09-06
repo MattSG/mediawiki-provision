@@ -5,9 +5,12 @@
 # ---------------------------------------------------------------------------
 function Invoke-Up {
     Assert-Admin
-    Test-PreexistingInfrastructure
     Invoke-SetupWizard
     Set-HttpsFlag  # wizard may have just set PublicUrl/CertPath/CertKeyPath itself
+    Set-Layout      # wizard may have just changed InstallRoot itself
+    # Runs after the wizard (not before) so a port conflict is checked against whatever
+    # HttpPort/DbPort the user actually ends up with, not whatever they started with.
+    Test-PreexistingInfrastructure
     Show-SetupSummary
     $rootPreexisted = Test-Path $Script:Root
     New-Item -ItemType Directory -Force -Path $Script:ProvDir, $Script:DownloadDir | Out-Null

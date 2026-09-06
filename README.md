@@ -87,12 +87,14 @@ actually in effect discoverable on the next re-run.
 
 Running `.\provision-mediawiki.ps1 -Action Up` with no other parameters is a
 genuinely complete one-shot setup: on a first install (no `LocalSettings.php`
-yet) it asks for the wiki name/title, admin username, an optional logo,
-Dev/Prod, whether to set up HTTPS right now (offering to generate and locally
-trust a self-signed certificate on the spot if you don't have a real one
-yet), Entra ID SSO, and each of the optional production tasks below - then
-shows a summary of everything it's about to do and waits for you to confirm
-before touching anything. Anything you pass explicitly via parameters isn't
+yet) it asks for the install folder, HTTP port, whether to use an existing
+MySQL instance instead of installing one (and its own port if not), the wiki
+name/title, admin username, an optional logo, Dev/Prod, whether to set up
+HTTPS right now (offering to generate and locally trust a self-signed
+certificate on the spot if you don't have a real one yet), Entra ID SSO, and
+each of the optional production tasks below - then shows a summary of
+everything it's about to do and waits for you to confirm before touching
+anything. Anything you pass explicitly via parameters isn't
 asked again. `-NonInteractive` or `-Force` skip the wizard and summary
 entirely.
 

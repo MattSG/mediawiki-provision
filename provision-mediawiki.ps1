@@ -159,20 +159,27 @@ Set-HttpsFlag
 # ---------------------------------------------------------------------------
 # STEP 1: Centralized layout - everything lives under $InstallRoot for easy backup.
 # ---------------------------------------------------------------------------
-$Script:Root         = $InstallRoot
-$Script:ApacheDir    = Join-Path $Script:Root 'apache'
-$Script:PhpDir       = Join-Path $Script:Root 'php'
-$Script:MysqlDir     = Join-Path $Script:Root 'mysql'
-$Script:PythonDir    = Join-Path $Script:Root 'python'
-$Script:WwwDir       = Join-Path $Script:Root 'www'
-$Script:CacheDir     = Join-Path $Script:Root 'cache'
-$Script:LogsDir      = Join-Path $Script:Root 'logs'
-$Script:ProvDir      = Join-Path $Script:Root '_provisioning'
-$Script:DownloadDir  = Join-Path $Script:ProvDir 'downloads'
-$Script:LogFile      = Join-Path $Script:ProvDir 'provision.log'
-$Script:StateFile    = Join-Path $Script:ProvDir 'install-state.json'
-$Script:CredFile     = Join-Path $Script:ProvDir 'credentials.generated.txt'
-if (-not $BackupPath) { $BackupPath = Join-Path $Script:ProvDir 'backups' }
+# A function (not inline code) for the same reason as Set-HttpsFlag: the wizard can also change
+# $InstallRoot itself (offering to set it interactively), so Invoke-Up re-runs this after the
+# wizard to make every derived path reflect wherever the user actually chose.
+function Set-Layout {
+    $Script:Root         = $InstallRoot
+    $Script:ApacheDir    = Join-Path $Script:Root 'apache'
+    $Script:PhpDir       = Join-Path $Script:Root 'php'
+    $Script:MysqlDir     = Join-Path $Script:Root 'mysql'
+    $Script:PythonDir    = Join-Path $Script:Root 'python'
+    $Script:WwwDir       = Join-Path $Script:Root 'www'
+    $Script:CacheDir     = Join-Path $Script:Root 'cache'
+    $Script:LogsDir      = Join-Path $Script:Root 'logs'
+    $Script:ProvDir      = Join-Path $Script:Root '_provisioning'
+    $Script:DownloadDir  = Join-Path $Script:ProvDir 'downloads'
+    $Script:LogFile      = Join-Path $Script:ProvDir 'provision.log'
+    $Script:StateFile    = Join-Path $Script:ProvDir 'install-state.json'
+    $Script:CredFile     = Join-Path $Script:ProvDir 'credentials.generated.txt'
+    if (-not $Script:BackupPathSetExplicitly) { $Script:BackupPath = Join-Path $Script:ProvDir 'backups' }
+}
+$Script:BackupPathSetExplicitly = [bool]$BackupPath
+Set-Layout
 
 $Script:ApacheServiceName = 'MediaWikiApache'
 $Script:MysqlServiceName  = 'MediaWikiMySQL'
