@@ -8,6 +8,40 @@ function Invoke-SetupWizard {
 
     Write-Host "`n=== MediaWiki setup - press Enter to accept the default shown in [brackets] ===" -ForegroundColor Cyan
 
+    if (-not $PSBoundParameters.ContainsKey('ProxyUrl') -and -not $PSBoundParameters.ContainsKey('ApacheZipUrl')) {
+        $resp = Read-Host 'Does this server have direct internet access to download everything it needs? [Y/n]'
+        if ($resp -match '^[Nn]') {
+            $resp = Read-Host 'Use a corporate proxy? [y/N]'
+            if ($resp -match '^[Yy]') {
+                $Script:ProxyUrl = Read-Host 'Proxy URL (e.g. http://proxy.company.com:8080)'
+                if ($Script:ProxyUrl) {
+                    $resp = Read-Host 'Use your current Windows credentials for the proxy? [Y/n]'
+                    if ($resp -notmatch '^[Nn]') { $Script:ProxyUseDefaultCredentials = $true }
+                    else { $Script:ProxyCredential = Get-Credential -Message 'Proxy credentials' }
+                }
+            }
+            $resp = Read-Host 'Do you have local files or a network share pre-staged with the required downloads instead? [y/N]'
+            if ($resp -match '^[Yy]') {
+                Write-Host 'Enter a local path or UNC share for each (Enter to keep downloading it normally):' -ForegroundColor DarkGray
+                foreach ($item in @(
+                    @{ Name = 'ApacheZipUrl'; Label = 'Apache httpd zip' }
+                    @{ Name = 'ModFcgidZipUrl'; Label = 'mod_fcgid zip' }
+                    @{ Name = 'PhpZipUrl'; Label = 'PHP zip' }
+                    @{ Name = 'ApcuZipUrl'; Label = 'APCu extension zip' }
+                    @{ Name = 'MySqlZipUrl'; Label = 'MySQL zip' }
+                    @{ Name = 'PythonZipUrl'; Label = 'Python embeddable zip' }
+                    @{ Name = 'ComposerPharUrl'; Label = 'composer.phar' }
+                    @{ Name = 'CaBundleUrl'; Label = 'CA certificate bundle' }
+                )) {
+                    $resp = Read-Host "  $($item.Label)"
+                    if ($resp) { Set-Variable -Name $item.Name -Value $resp -Scope Script }
+                }
+                Write-Host 'Note: MediaWiki core + the ~17 extension/skin zips still come from GitHub and are not' -ForegroundColor DarkGray
+                Write-Host 'individually overridable - pre-stage those under _provisioning\downloads\ instead (see README).' -ForegroundColor DarkGray
+            }
+        }
+    }
+
     if (-not $PSBoundParameters.ContainsKey('InstallRoot')) {
         $resp = Read-Host "Install folder - everything lives under here for easy backup [$InstallRoot]"
         if ($resp) { $Script:InstallRoot = $resp }
