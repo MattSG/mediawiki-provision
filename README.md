@@ -100,6 +100,23 @@ confirm before touching anything. Anything you pass explicitly via
 parameters isn't asked again. `-NonInteractive` or `-Force` skip the wizard
 and summary entirely.
 
+### Per-step confirmation
+
+Beyond the one-time upfront summary, both `Up` and `Down` pause before each
+individual step (installing Apache, writing php.ini, installing extensions,
+stopping a service, deleting the install root, etc.), printing a one-line
+summary of exactly what it's about to do and asking:
+
+```
+--> Install/verify Apache + mod_fcgid binaries.
+    Proceed? [Y]es / [n]o (skip this step) / [q]uit
+```
+
+`Y` (or Enter) runs the step, `n` skips just that one step and continues to
+the next, `q` aborts the whole run immediately. Like the wizard, this is
+skipped entirely under `-NonInteractive`/`-Force` so unattended/CI runs never
+block.
+
 ### Safety: pre-existing Apache/MySQL
 
 Two independent checks, both interactive by default (skip with `-Force` /

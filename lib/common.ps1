@@ -4,6 +4,25 @@ function Write-Step { param([string]$Message) $l = "[{0}] {1}" -f (Get-Date -For
 function Write-Note { param([string]$Message) $l = "         {0}" -f $Message; Write-Host $l -ForegroundColor DarkGray; Add-Content -Path $Script:LogFile -Value $l -ErrorAction SilentlyContinue }
 function Write-Warn { param([string]$Message) $l = "WARNING: {0}" -f $Message; Write-Host $l -ForegroundColor Yellow; Add-Content -Path $Script:LogFile -Value $l -ErrorAction SilentlyContinue }
 
+# Per-step gate for Up/Down: prints what's about to happen and asks yes/no/quit before running it.
+# Skipped entirely under -NonInteractive/-Force (same convention as the wizard) so unattended/CI
+# runs never block on a prompt. 'n' skips just this one step and continues; 'q' aborts the whole run.
+function Confirm-Step {
+    param([string]$Summary)
+    if ($Force -or $NonInteractive) { return $true }
+    Write-Host "`n--> $Summary" -ForegroundColor Cyan
+    $blankStreak = 0
+    while ($true) {
+        $resp = Read-Host '    Proceed? [Y]es / [n]o (skip this step) / [q]uit'
+        if ([string]::IsNullOrEmpty($resp) -or $resp -match '^[Yy]') { return $true }
+        if ($resp -match '^[Nn]') { Write-Note "Skipped: $Summary"; return $false }
+        if ($resp -match '^[Qq]') { Write-Host 'Aborted by user.' -ForegroundColor Yellow; exit 1 }
+        $blankStreak++
+        if ($blankStreak -ge 5) { throw 'Halted: no interactive input available to answer this prompt.' }
+        Write-Host "Enter Y, n, or q." -ForegroundColor Yellow
+    }
+}
+
 function Get-State {
     if (Test-Path $Script:StateFile) { return Get-Content $Script:StateFile -Raw | ConvertFrom-Json -AsHashtable }
     return @{

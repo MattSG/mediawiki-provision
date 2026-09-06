@@ -19,29 +19,45 @@ function Invoke-Up {
 
     $Script:WikiAdminPassword = if ($WikiAdminPassword) { $WikiAdminPassword } else { New-RandomPassword }
 
-    Install-ApacheBinaries
-    Install-Php
-    Set-PhpIni
-    Set-ApacheConfig -State $state
-    Install-MySql -State $state
-    Install-Python
+    if (Confirm-Step 'Install/verify Apache + mod_fcgid binaries.') { Install-ApacheBinaries }
+    if (Confirm-Step 'Install/verify PHP.') { Install-Php }
+    if (Confirm-Step 'Write php.ini (extensions, OPcache/APCu, upload limits).') { Set-PhpIni }
+    if (Confirm-Step 'Write Apache config (vhost, mod_fcgid, gzip, cache headers) and (re)start the Apache service.') { Set-ApacheConfig -State $state }
+    if (Confirm-Step "Install/start MySQL$(if ($UseExternalDb) { " (skipped - using external DB at $DbHost`:$DbPort)" }).") { Install-MySql -State $state }
+    if (Confirm-Step 'Install/verify the embedded Python runtime.') { Install-Python }
 
-    Get-MediaWikiCore
-    Install-SemanticMediaWiki
+    if (Confirm-Step 'Download/verify MediaWiki core.') { Get-MediaWikiCore }
+    if (Confirm-Step 'Install SemanticMediaWiki.') { Install-SemanticMediaWiki }
     $sso = Get-SsoConfig
     $extensionsToInstall = $Script:ZipExtensions + @(if ($sso.Enabled) { 'PluggableAuth', 'OpenIDConnect' })
-    Write-Step 'Installing extensions (GitHub zip archives + composer where needed)...'
-    Install-ZipComponents -Names $extensionsToInstall -SubDir 'extensions' -RepoPrefix 'mediawiki-extensions-' -MarkerFile 'extension.json'
-    Write-Step 'Installing skins (GitHub zip archives)...'
-    Install-ZipComponents -Names $Script:ZipSkins -SubDir 'skins' -RepoPrefix 'mediawiki-skins-' -MarkerFile 'skin.json'
-    Install-MediaWikiDatabase
-    Set-UploadsAndPermissions
-    Set-PerformanceAndCaching
-    Complete-Installation
+    if (Confirm-Step "Install extensions: $($extensionsToInstall -join ', ').") {
+        Write-Step 'Installing extensions (GitHub zip archives + composer where needed)...'
+        Install-ZipComponents -Names $extensionsToInstall -SubDir 'extensions' -RepoPrefix 'mediawiki-extensions-' -MarkerFile 'extension.json'
+    }
+    if (Confirm-Step "Install skins: $($Script:ZipSkins -join ', ').") {
+        Write-Step 'Installing skins (GitHub zip archives)...'
+        Install-ZipComponents -Names $Script:ZipSkins -SubDir 'skins' -RepoPrefix 'mediawiki-skins-' -MarkerFile 'skin.json'
+    }
+    if (Confirm-Step 'Create/verify the wiki database and run the web installer if needed.') { Install-MediaWikiDatabase }
+    if (Confirm-Step 'Configure file uploads directory and permissions.') { Set-UploadsAndPermissions }
+    if (Confirm-Step 'Apply caching/performance settings to LocalSettings.php.') { Set-PerformanceAndCaching }
+    if (Confirm-Step 'Run update.php (database schema for core + all extensions).') { Complete-Installation }
 
-    if ($DisableJobRunner) { Unregister-JobRunnerTask } elseif ($EnableJobRunner) { Register-JobRunnerTask }
-    if ($DisableLogRotation) { Unregister-LogRotationTask } elseif ($EnableLogRotation) { Register-LogRotationTask }
-    if ($DisableBackups) { Unregister-BackupTask } elseif ($EnableBackups) { Register-BackupTask }
+    if ($DisableJobRunner) {
+        if (Confirm-Step 'Remove the background job-runner scheduled task.') { Unregister-JobRunnerTask }
+    } elseif ($EnableJobRunner) {
+        if (Confirm-Step 'Register the background job-runner scheduled task.') { Register-JobRunnerTask }
+    }
+    if ($DisableLogRotation) {
+        if (Confirm-Step 'Remove the log-rotation scheduled task.') { Unregister-LogRotationTask }
+    } elseif ($EnableLogRotation) {
+        if (Confirm-Step 'Register the log-rotation scheduled task.') { Register-LogRotationTask }
+    }
+    if ($DisableBackups) {
+        if (Confirm-Step 'Remove the automated-backup scheduled task.') { Unregister-BackupTask }
+    } elseif ($EnableBackups) {
+        if (Confirm-Step "Register the automated-backup scheduled task ($BackupRetentionDays days retention).") { Register-BackupTask }
+    }
 
     $wikiUrl = if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort/" }
     $lines = @(
@@ -79,10 +95,12 @@ function Invoke-Down {
     # --- Apache: only ever stopped/removed if THIS install created it. A pre-existing Apache
     # (coexisting with after Confirm-Override) is never stopped, let alone removed, by Down.
     if ($state.apacheServiceCreated -and (Get-Service -Name $Script:ApacheServiceName -ErrorAction SilentlyContinue)) {
-        Stop-Service -Name $Script:ApacheServiceName -Force -ErrorAction SilentlyContinue
-        if (-not $KeepData) {
-            $httpdExe = Join-Path $Script:ApacheDir 'bin\httpd.exe'
-            if (Test-Path $httpdExe) { & $httpdExe -k uninstall -n $Script:ApacheServiceName 2>&1 | Out-Null }
+        if (Confirm-Step "Stop$(if (-not $KeepData) { ' and uninstall' }) the Apache service '$($Script:ApacheServiceName)' (created by this install).") {
+            Stop-Service -Name $Script:ApacheServiceName -Force -ErrorAction SilentlyContinue
+            if (-not $KeepData) {
+                $httpdExe = Join-Path $Script:ApacheDir 'bin\httpd.exe'
+                if (Test-Path $httpdExe) { & $httpdExe -k uninstall -n $Script:ApacheServiceName 2>&1 | Out-Null }
+            }
         }
     } elseif ($state.apacheIsForeign) {
         Write-Note "Apache service '$($Script:ApacheServiceName)' pre-existed - leaving it running, untouched."
@@ -95,22 +113,28 @@ function Invoke-Down {
     if ($UseExternalDb -or $state.mysqlIsForeign) {
         Write-Note 'MySQL is external/pre-existing - leaving its service and databases untouched.'
     } elseif ($state.mysqlServiceCreated -and (Get-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue)) {
-        Stop-Service -Name $Script:MysqlServiceName -Force -ErrorAction SilentlyContinue
-        if (-not $KeepData) {
-            $mysqldExe = Join-Path $Script:MysqlDir 'bin\mysqld.exe'
-            if (Test-Path $mysqldExe) { & $mysqldExe --remove $Script:MysqlServiceName 2>&1 | Out-Null }
+        if (Confirm-Step "Stop$(if (-not $KeepData) { ' and uninstall' }) the MySQL service '$($Script:MysqlServiceName)' (created by this install).") {
+            Stop-Service -Name $Script:MysqlServiceName -Force -ErrorAction SilentlyContinue
+            if (-not $KeepData) {
+                $mysqldExe = Join-Path $Script:MysqlDir 'bin\mysqld.exe'
+                if (Test-Path $mysqldExe) { & $mysqldExe --remove $Script:MysqlServiceName 2>&1 | Out-Null }
+            }
         }
     }
 
     if (-not $KeepData) {
-        Unregister-JobRunnerTask
-        Unregister-LogRotationTask
-        Unregister-BackupTask
+        if (Confirm-Step 'Remove any job-runner/log-rotation/backup scheduled tasks.') {
+            Unregister-JobRunnerTask
+            Unregister-LogRotationTask
+            Unregister-BackupTask
+        }
     }
 
     if (-not $KeepData -and $state.rootCreated -and (Test-Path $Script:Root)) {
-        Write-Note "Deleting $($Script:Root) (this script created it)."
-        Remove-Item -Recurse -Force $Script:Root -ErrorAction SilentlyContinue
+        if (Confirm-Step "Delete $($Script:Root) and everything under it (this install's data, credentials, LocalSettings.php)." ) {
+            Write-Note "Deleting $($Script:Root) (this script created it)."
+            Remove-Item -Recurse -Force $Script:Root -ErrorAction SilentlyContinue
+        }
     }
     Write-Step 'Down.'
 }
