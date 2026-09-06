@@ -153,5 +153,9 @@ function Show-SetupSummary {
     Write-Host "  Log rotation:  $(if ($EnableLogRotation) { 'enabled' } else { 'disabled' })"
     Write-Host "  Backups:       $(if ($EnableBackups) { "enabled ($BackupRetentionDays days retention)" } else { 'disabled' })"
     Write-Host "  Install root:  $Script:Root"
+    if ($ProxyUrl) { Write-Host "  Proxy:         $ProxyUrl" }
+    $localSources = @('ApacheZipUrl', 'ModFcgidZipUrl', 'PhpZipUrl', 'ApcuZipUrl', 'MySqlZipUrl', 'PythonZipUrl', 'ComposerPharUrl', 'CaBundleUrl') |
+        Where-Object { (Get-Variable -Name $_ -ValueOnly) -match '^(?:[A-Za-z]:\\|\\\\|file:///)' }
+    if ($localSources) { Write-Host "  Local sources: $($localSources -join ', ')" }
     Read-Host "`nPress Enter to install, Ctrl+C to abort"
 }
