@@ -10,19 +10,21 @@ itself down.
 - **Apache** (Apache Lounge build) + **mod_fcgid**, serving PHP via FastCGI
 - **PHP 8.2** with OPcache + APCu tuned for MediaWiki
 - **MySQL 8.4** (zip install, registered as a Windows service)
+- **Python** (official embeddable zip, no installer/PATH change) purely so
+  SyntaxHighlight_GeSHi's bundled Pygments zipapp has an interpreter to run
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
 - A curated "vanilla plus" extension set: ParserFunctions, Scribunto, Cite,
   CategoryTree, InputBox, Interwiki, Nuke, RenameUser, ConfirmEdit, WikiEditor,
   VisualEditor, PageForms, ReplaceText, CodeMirror, TemplateData,
   TemplateWizard, LabeledSectionTransclusion, AbuseFilter, CheckUser, Math,
-  and SemanticMediaWiki (SyntaxHighlight_GeSHi is added automatically if a
-  Python interpreter is found on `PATH`)
+  RevisionSlider, TwoColConflict, Echo, SyntaxHighlight_GeSHi, and
+  SemanticMediaWiki
 - File uploads enabled with correct directory permissions
 
-Everything the script creates (Apache, PHP, MySQL, the wiki, cache, logs,
-download cache) lives under one root folder (`C:\MediaWikiStack` by default)
-so the whole install can be backed up or wiped as a unit.
+Everything the script creates (Apache, PHP, MySQL, Python, the wiki, cache,
+logs, download cache) lives under one root folder (`C:\MediaWikiStack` by
+default) so the whole install can be backed up or wiped as a unit.
 
 ## Usage
 
