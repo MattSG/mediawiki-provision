@@ -165,16 +165,35 @@ function Test-PreexistingInfrastructure {
 function Get-RemoteFile {
     param([string]$Url, [string]$Destination, [string]$VendorPageOnFailure)
     if (Test-Path $Destination) { Write-Note "Already downloaded: $(Split-Path $Destination -Leaf)"; return }
+
+    # A local path or UNC share (e.g. \\fileserver\mirrors\httpd.zip, or a plain drive-letter
+    # path) instead of a URL - for a server that can't reach the internet at all. No proxy/TLS
+    # concerns apply; just copy it.
+    if ($Url -match '^(?:[A-Za-z]:\\|\\\\|file:///)') {
+        $localPath = $Url -replace '^file:///', ''
+        if (-not (Test-Path $localPath)) { throw "Configured local/UNC source not found: $localPath" }
+        Write-Note "Copying $localPath ..."
+        Copy-Item -Path $localPath -Destination $Destination -Force
+        return
+    }
+
     Write-Note "Downloading $Url ..."
     try {
         # Some vendors (Apache Lounge, MySQL's CDN) reject requests without TLS1.2 explicitly
         # negotiated and/or a browser-like User-Agent - plain Invoke-WebRequest defaults fail
         # against them with an opaque "Operation is not valid..." / 403 error.
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -Headers @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } -MaximumRedirection 5
+        $proxyArgs = @{}
+        if ($ProxyUrl) {
+            $proxyArgs['Proxy'] = $ProxyUrl
+            if ($ProxyUseDefaultCredentials) { $proxyArgs['ProxyUseDefaultCredentials'] = $true }
+            elseif ($ProxyCredential) { $proxyArgs['ProxyCredential'] = $ProxyCredential }
+        }
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -Headers @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } -MaximumRedirection 5 @proxyArgs
     } catch {
         Remove-Item $Destination -ErrorAction SilentlyContinue
-        throw "Download failed: $Url`n  Vendor pages change exact filenames over time - check $VendorPageOnFailure for the current link and re-run with the matching -*Url override.`n  Original error: $($_.Exception.Message)"
+        $proxyHint = if ($ProxyUrl) { " (via proxy $ProxyUrl)" } else { '' }
+        throw "Download failed: $Url$proxyHint`n  Vendor pages change exact filenames over time - check $VendorPageOnFailure for the current link and re-run with the matching -*Url override. If this server can't reach the internet directly, pass -ProxyUrl for a corporate proxy, or point the -*Url parameter at a local path/UNC share instead.`n  Original error: $($_.Exception.Message)"
     }
 }
 

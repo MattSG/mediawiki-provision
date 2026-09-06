@@ -30,7 +30,7 @@ testing (see below) — it never runs as part of `Up`/`Down`.
 ## What it installs
 
 - **Apache** (Apache Lounge build) + **mod_fcgid**, serving PHP via FastCGI
-- **PHP 8.2** with OPcache + APCu tuned for MediaWiki, plus a CA certificate
+- **PHP 8.3** with OPcache + APCu tuned for MediaWiki, plus a CA certificate
   bundle so PHP's curl/openssl extensions can verify outbound HTTPS calls
   (the windows.php.net zip ships none — needed for SSO, and any extension
   that calls out over HTTPS)
@@ -202,13 +202,65 @@ needs the DB password to run `mysqldump` unattended.
 | `-NonInteractive` | | Skip both the wizard and pre-existing-service prompts |
 | `-KeepData` | | On `Down`, stop services without deleting anything |
 
-Vendor download URLs (Apache Lounge, PHP, APCu, MySQL, Python) are pinned to
-specific versions via `-ApacheZipUrl`/`-PhpZipUrl`/etc. parameters — override
-these if a vendor's file has moved.
+Vendor download URLs (Apache Lounge, PHP, APCu, MySQL, Python, Composer, the
+CA bundle) are pinned to specific versions via `-ApacheZipUrl`/`-PhpZipUrl`/
+etc. parameters — override these if a vendor's file has moved.
+
+### Restricted/offline servers: proxy and local mirrors
+
+- `-ProxyUrl <url>` (+ `-ProxyUseDefaultCredentials` or `-ProxyCredential`)
+  routes every download this script makes through a corporate proxy.
+- Any of the `-*Url` parameters above also accepts a local path or UNC share
+  (e.g. `-PythonZipUrl \\fileserver\mirrors\python-embed.zip`) instead of a
+  URL, for a server with no internet access at all - the file is copied, not
+  downloaded.
+- The ~17 extension/skin zips and MediaWiki core itself come from GitHub and
+  aren't individually overridable that way, but `Get-RemoteFile` always skips
+  downloading anything already present at its expected cache path
+  (`<InstallRoot>\_provisioning\downloads\<repo>-<branch>.zip`) - pre-stage
+  files there with matching names for a fully offline extension set.
+
+### Restoring from a backup
+
+There's no automated restore (backups are just a DB dump + a files archive -
+see above) - to restore one:
+```powershell
+# 1. Stop the wiki so nothing writes to the DB mid-restore
+Stop-Service MediaWikiApache
+
+# 2. Restore the database (adjust paths/credentials to your backup)
+& 'C:\MediaWikiStack\mysql\bin\mysql.exe' -uroot -p'<DB root pass>' mediawiki `
+    -e "source C:\MediaWikiStack\_provisioning\backups\db-<timestamp>.sql"
+
+# 3. Restore LocalSettings.php / images from the matching files-<timestamp>.zip
+Expand-Archive 'C:\MediaWikiStack\_provisioning\backups\files-<timestamp>.zip' `
+    -DestinationPath 'C:\MediaWikiStack\www' -Force
+
+Start-Service MediaWikiApache
+```
 
 ## Requirements
 
 - Windows with PowerShell 7+
 - Administrator privileges
 - Internet access (downloads Apache, PHP, MySQL, Python, MediaWiki core/
-  extensions, Composer, a CA bundle)
+  extensions, Composer, a CA bundle) - or see the proxy/local-mirror options
+  above for a server without direct internet access
+
+### Before running on a locked-down/corporate server
+
+None of these are things the script can detect or work around itself - worth
+checking first if the first run fails in a way that doesn't look like a
+script bug:
+
+- **PowerShell execution policy**: if running the script is blocked outright,
+  invoke it with `pwsh -ExecutionPolicy Bypass -File provision-mediawiki.ps1
+  ...` rather than changing the machine-wide policy.
+- **Antivirus/EDR**: some security software quarantines freshly-downloaded/
+  extracted executables (httpd.exe, mysqld.exe, php-cgi.exe) or blocks
+  outbound connections from processes it hasn't seen before. If a binary that
+  was just extracted "goes missing" or a service won't start with no clear
+  error, check quarantine/exclusion logs before assuming the script broke it.
+- **Outbound network policy**: beyond the proxy support above, some
+  environments allow only specific destination domains - see the download
+  sources listed in Requirements above if downloads are blocked entirely.

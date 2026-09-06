@@ -126,12 +126,23 @@ param(
     # Direct-download URLs. Vendor pages (Apache Lounge / windows.php.net / MySQL) change
     # exact filenames over time with no stable "latest" redirect - if a download 404s, visit
     # the vendor page shown in the error, copy the current link, and pass the override here.
+    # Each also accepts a local path or UNC share (e.g. \\fileserver\mirrors\httpd.zip) instead
+    # of a URL, for a server that can't reach the internet at all - see -ProxyUrl below for the
+    # "can reach the internet, but only via a corporate proxy" case instead.
     [string]$ApacheZipUrl    = 'https://www.apachelounge.com/download/VS17/binaries/httpd-2.4.66-251206-Win64-VS17.zip',
     [string]$ModFcgidZipUrl  = 'https://www.apachelounge.com/download/VS17/modules/mod_fcgid-2.3.10-win64-VS17.zip',
     [string]$PhpZipUrl       = 'https://downloads.php.net/~windows/releases/php-8.3.33-nts-Win32-vs16-x64.zip',
     [string]$ApcuZipUrl      = 'https://downloads.php.net/~windows/pecl/releases/apcu/5.1.28/php_apcu-5.1.28-8.3-nts-vs16-x64.zip',
     [string]$MySqlZipUrl     = 'https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11-winx64.zip',
     [string]$PythonZipUrl    = 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip',
+    [string]$ComposerPharUrl = 'https://getcomposer.org/composer.phar',
+    [string]$CaBundleUrl     = 'https://curl.se/ca/cacert.pem',
+
+    # Corporate proxy for every download this script makes (Apache/PHP/MySQL/Python zips, GitHub
+    # extension/skin archives, composer.phar, the CA bundle). Omit for direct internet access.
+    [string]$ProxyUrl = $null,
+    [switch]$ProxyUseDefaultCredentials,
+    [pscredential]$ProxyCredential = $null,
 
     [switch]$Force,
 

@@ -15,7 +15,7 @@ function Get-ComposerPhar {
     $pharPath = Join-Path $Script:ProvDir 'composer.phar'
     if (Test-Path $pharPath) { return $pharPath }
     Write-Step 'Downloading composer.phar...'
-    Get-RemoteFile -Url 'https://getcomposer.org/composer.phar' -Destination $pharPath -VendorPageOnFailure 'https://getcomposer.org/download/'
+    Get-RemoteFile -Url $ComposerPharUrl -Destination $pharPath -VendorPageOnFailure 'https://getcomposer.org/download/'
     return $pharPath
 }
 

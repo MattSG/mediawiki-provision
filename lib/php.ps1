@@ -36,7 +36,7 @@ function Install-Php {
     $caPath = Join-Path $Script:PhpDir 'cacert.pem'
     if (-not (Test-Path $caPath)) {
         Write-Step 'Downloading CA certificate bundle (curl.se) for PHP outbound HTTPS calls...'
-        Get-RemoteFile -Url 'https://curl.se/ca/cacert.pem' -Destination $caPath -VendorPageOnFailure 'https://curl.se/docs/caextract.html'
+        Get-RemoteFile -Url $CaBundleUrl -Destination $caPath -VendorPageOnFailure 'https://curl.se/docs/caextract.html'
     }
 }
 
