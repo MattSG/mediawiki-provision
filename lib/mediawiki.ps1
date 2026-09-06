@@ -232,30 +232,6 @@ $logoLine
         $block += "`n`$wgPygmentizePath = '$wrapperPath';"
     }
 
-    if (Test-Path (Join-Path $Script:WwwDir 'extensions\Lockdown')) {
-        # Lockdown can only take permissions AWAY from a group that already has them via
-        # $wgGroupPermissions/$wgNamespaceProtection - it never grants. Left commented since the
-        # actual namespaces/groups to gate are site-specific; fill in and uncomment as needed.
-        $block += @'
-
-/* --- Namespace/section gating (Lockdown) - example, uncomment and adjust ---
-define( 'NS_INTERNAL', 3000 );
-define( 'NS_INTERNAL_TALK', 3001 );
-$wgExtraNamespaces[NS_INTERNAL] = 'Internal';
-$wgExtraNamespaces[NS_INTERNAL_TALK] = 'Internal_talk';
-$wgGroupPermissions['trusted']['read'] = true;
-$wgGroupPermissions['trusted']['edit'] = true;
-$wgNamespacePermissionLockdown[NS_INTERNAL]['read'] = [ 'trusted' ];
-$wgNamespacePermissionLockdown[NS_INTERNAL]['edit'] = [ 'trusted' ];
-$wgNamespacePermissionLockdown[NS_INTERNAL_TALK]['read'] = [ 'trusted' ];
-$wgNamespacePermissionLockdown[NS_INTERNAL_TALK]['edit'] = [ 'trusted' ];
-$wgNonincludableNamespaces[] = NS_INTERNAL; // stop restricted content leaking via transclusion
-// Note: SemanticMediaWiki has no built-in ACL - #ask queries on public pages can still surface
-// facts extracted from a Lockdown-restricted namespace. Audit queries if mixing the two.
---- end example --- */
-'@
-    }
-
     $sso = Get-SsoConfig
     if ($sso.Enabled) {
         # Local admin login stays available (EnableLocalLogin) so a misconfigured tenant can't

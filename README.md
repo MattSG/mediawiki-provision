@@ -40,7 +40,7 @@ testing (see below) — it never runs as part of `Up`/`Down`.
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
 - A deliberately lean extension set for a small trusted-team wiki: ParserFunctions,
-  Scribunto, Cite, CategoryTree, InputBox, RenameUser, WikiEditor, VisualEditor,
+  Cite, CategoryTree, InputBox, RenameUser, WikiEditor, VisualEditor,
   PageForms, ReplaceText, CodeMirror, TemplateData, LabeledSectionTransclusion,
   RevisionSlider, Echo, BreadCrumbs2, SyntaxHighlight_GeSHi, and SemanticMediaWiki.
   See the comment above `$Script:ZipExtensions` in the script for what was

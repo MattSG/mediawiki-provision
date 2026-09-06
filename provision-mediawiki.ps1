@@ -174,7 +174,8 @@ $Script:MarkerEnd         = '# === provision-mediawiki.ps1 managed block: END ==
 #   TemplateWizard (GUI sugar - TemplateData already covers the real need), TwoColConflict
 #   (edit-conflict UI - rare with few concurrent editors), StructuredNavigation/DynamicSidebar
 #   (nav-menu machinery beyond what most small teams configure/maintain), Scribunto (Lua
-#   scripting for complex templates - not needed unless templates get non-trivial).
+#   scripting for complex templates - not needed unless templates get non-trivial), Lockdown
+#   (namespace/group access gating - config-file only, no admin UI for assigning permissions).
 $Script:ZipExtensions = @(
     'ParserFunctions', 'Cite', 'CategoryTree', 'InputBox',
     'RenameUser', 'WikiEditor', 'VisualEditor', 'PageForms', 'ReplaceText',
@@ -184,8 +185,6 @@ $Script:ZipExtensions = @(
     'RevisionSlider',              # visual diff/revision-comparison slider
     'Echo',                        # talk-page/mention notifications (skip email digests without a job-runner cron)
     'BreadCrumbs2',                # Home > Category > Page trail (define via MediaWiki:Breadcrumbs)
-    'Lockdown',                    # gate namespaces/actions to specific user groups (see commented
-                                    # template in the generated LocalSettings.php managed block)
     # Needs a Python interpreter to run its bundled, self-contained Pygments zipapp - provisioned
     # into $Script:PythonDir by Install-Python (a real Windows Server box has none by default).
     'SyntaxHighlight_GeSHi'
