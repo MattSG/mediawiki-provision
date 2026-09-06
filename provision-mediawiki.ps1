@@ -118,6 +118,10 @@ $Script:ZipExtensions = @(
     'RevisionSlider',              # visual diff/revision-comparison slider
     'TwoColConflict',              # side-by-side edit-conflict resolution UI
     'Echo',                        # talk-page/mention notifications
+    'BreadCrumbs2',                # Home > Category > Page trail (define via MediaWiki:Breadcrumbs)
+    'RelatedArticles',             # "related pages" widget for discovery
+    'StructuredNavigation',        # hierarchical dropdown/portlet nav menus as wiki pages
+    'DynamicSidebar'               # per-page/namespace/category sidebar content
     # Needs a Python interpreter to run its bundled, self-contained Pygments zipapp - provisioned
     # into $Script:PythonDir by Install-Python (a real Windows Server box has none by default).
     'SyntaxHighlight_GeSHi'
