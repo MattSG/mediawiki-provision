@@ -189,6 +189,16 @@ $($Script:MarkerBegin)
 // --- ResourceLoader / static asset caching ---
 `$wgResourceLoaderMaxage['versioned']   = 30 * 24 * 3600;
 `$wgResourceLoaderMaxage['unversioned'] = 5 * 60;
+`$wgResourceLoaderStorageEnabled = true; // client-side localStorage cache of RL modules
+
+// --- Job queue: a scheduled task runs runJobs periodically (see lib/scheduledtasks.ps1) - 0
+// here stops random page views from ALSO inline-spawning a job runner and stealing a php-cgi
+// worker for it, which just duplicates work and adds latency to whichever user triggers it.
+`$wgJobRunRate = 0;
+
+// --- No CDN/reverse-proxy in front of this single-box install - keep this explicit rather than
+// left to the (also-false) default, so it's obvious nothing purge-related is half-configured.
+`$wgUseCdn = false;
 
 // --- Sane defaults for a modern wiki ---
 `$wgEnableAPI         = true;
@@ -196,6 +206,10 @@ $($Script:MarkerBegin)
 `$wgDefaultSkin       = 'vector-2022';
 `$wgServer            = '$(if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort" })';
 $debugLine
+// wgShowExceptionDetails alone doesn't cover every debug-leak surface in Prod.
+`$wgShowSQLErrors        = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
+`$wgShowDBErrorBacktrace = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
+`$wgDevelopmentWarnings  = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
 $logoLine
 
 // --- File uploads (images dir created + permissioned by the provisioning script) ---

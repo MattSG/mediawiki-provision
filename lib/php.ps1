@@ -75,7 +75,16 @@ function Set-PhpIni {
     if ($Script:ApcuAvailable) {
         $ini = Set-IniValue $ini 'extension' 'apcu'
         $ini += "`r`napc.enable_cli = 0`r`n"
+        # Default (32M) is too small once APCu is also MediaWiki's main/session/message/parser
+        # cache backend (see $wgMainCacheType etc.) on top of ordinary opcode caching.
+        $ini = Set-IniValue $ini 'apc.shm_size' '128M'
     }
+
+    # MediaWiki + ~17 extensions + SemanticMediaWiki is a lot of files for autoloading to stat()
+    # repeatedly - the PHP default (4096K/120s) is on the low/short side for a codebase this size
+    # that mostly only changes on a deliberate deploy.
+    $ini = Set-IniValue $ini 'realpath_cache_size' '4096K'
+    $ini = Set-IniValue $ini 'realpath_cache_ttl' '600'
 
     $ini = Set-IniValue $ini 'opcache.enable' '1'
     $ini = Set-IniValue $ini 'opcache.enable_cli' '0'

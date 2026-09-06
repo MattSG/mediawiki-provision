@@ -75,9 +75,15 @@ MaxKeepAliveRequests 200
 KeepAliveTimeout 5
 
 <IfModule fcgid_module>
-    FcgidMaxRequestsPerProcess 500
+    # Higher than the fcgid default (500) - recycling a php-cgi worker this often on a small
+    # wiki's request volume mostly just adds OPcache-SHM-reattach overhead per spawn for no
+    # real benefit; 2000 still recycles often enough to bound any slow memory growth.
+    FcgidMaxRequestsPerProcess 2000
     FcgidMinProcessesPerClass 2
-    FcgidMaxProcessesPerClass 20
+    # Lower than a high-traffic default (20) - a small trusted-team wiki doesn't need that many
+    # concurrent php-cgi processes, each holding its own OPcache-attached memory; keeps idle
+    # memory footprint down without constraining real usage.
+    FcgidMaxProcessesPerClass 10
     FcgidIOTimeout 60
     FcgidBusyTimeout 60
 </IfModule>

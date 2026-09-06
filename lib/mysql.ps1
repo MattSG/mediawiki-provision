@@ -63,11 +63,14 @@ collation-server=utf8mb4_unicode_ci
 innodb_buffer_pool_size=${bufferPoolMB}M
 innodb_log_file_size=128M
 innodb_flush_log_at_trx_commit=2
+innodb_flush_method=unbuffered
 max_connections=150
 table_open_cache=2000
 thread_cache_size=16
 tmp_table_size=64M
 max_heap_table_size=64M
+# Diagnostics/monitoring overhead not needed on a small single-box install - frees RAM.
+performance_schema=OFF
 "@ | Set-Content $iniPath
     }
 
