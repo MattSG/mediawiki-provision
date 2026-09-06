@@ -103,11 +103,16 @@ entirely.
 Two independent checks, both interactive by default (skip with `-Force` /
 `-NonInteractive`):
 
-1. **Generic detection** (`Test-PreexistingInfrastructure`, runs first): any
-   Apache- or MySQL-*like* service already on the machine, or `HttpPort`/
-   `DbPort` already in use by something else. This is a heads-up prompt —
-   continuing is normally safe since this script's own Apache/MySQL are
-   isolated under `InstallRoot` on their own ports.
+1. **Generic detection** (`Test-PreexistingInfrastructure`, runs after the
+   wizard): any Apache- or MySQL-*like* service already on the machine, or
+   `HttpPort`/`DbPort`/443 already in use by something else - genuinely
+   likely on a real server, since those are exactly the defaults MySQL/IIS/
+   another web server would already be using. Gives real choices rather
+   than just continue-or-abort: pick a different port on the spot, point
+   the wiki at the existing MySQL instead of installing a separate one
+   (switches to `-UseExternalDb` interactively, asking for its credentials),
+   or abort to deal with it yourself first. A same-named-but-unrelated
+   service (not an actual port clash) is safe to continue past as-is.
 2. **Exact-name collision** (`Confirm-Override`): if a service already exists
    with the *exact* name this script would use (`MediaWikiApache` /
    `MediaWikiMySQL`), it halts for explicit confirmation before touching it.

@@ -68,30 +68,98 @@ function Confirm-Override {
 # or a MySQL instance under a different service name already listening on DbPort). This is a
 # heads-up prompt, not a hard block - Confirm-Override still runs later if our specific service
 # names collide.
+# Numbered-choice prompt helper - returns the 1-based index of what the user picked, re-prompting
+# on anything else (no silent "wrong input just does the first option"). Read-Host returns an
+# empty string forever once stdin hits EOF (piped input exhausted, redirected from /dev/null,
+# etc.) rather than throwing - without a bound this would spin forever re-printing the menu, so
+# a run of consecutive blank reads is treated as "no one is there to answer" and aborts instead.
+function Read-Choice {
+    param([string[]]$Options)
+    $blankStreak = 0
+    while ($true) {
+        for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host "  $($i + 1)) $($Options[$i])" }
+        $resp = Read-Host 'Choice'
+        if ($resp -match '^\d+$' -and [int]$resp -ge 1 -and [int]$resp -le $Options.Count) { return [int]$resp }
+        if ([string]::IsNullOrEmpty($resp)) {
+            $blankStreak++
+            if ($blankStreak -ge 5) { throw 'Halted: no interactive input available to answer this prompt.' }
+        } else {
+            $blankStreak = 0
+        }
+        Write-Host "Enter a number 1-$($Options.Count)." -ForegroundColor Yellow
+    }
+}
+
+# Checked interactively for both Apache and MySQL: a same-named service existing elsewhere is
+# survivable (this script's own services are isolated under InstallRoot on their own port), but
+# something already LISTENING on the port this script needs WILL fail outright - either way, ask
+# what to do rather than a bare "continue anyway", since on a real server this is genuinely likely
+# (MySQL/a web server already installed with their usual defaults: 3306/80/443).
 function Test-PreexistingInfrastructure {
     if ($Force -or $NonInteractive) { return }
-    $findings = [System.Collections.Generic.List[string]]::new()
 
     $apacheLike = Get-Service | Where-Object { $_.DisplayName -like '*Apache*' -and $_.Name -ne $Script:ApacheServiceName }
-    if ($apacheLike) { $findings.Add("Existing Apache-like service(s): $($apacheLike.Name -join ', ')") }
-    if ((Test-NetConnection -ComputerName 'localhost' -Port $HttpPort -WarningAction SilentlyContinue).TcpTestSucceeded) {
-        $findings.Add("Port $HttpPort is already in use by something.")
+    $httpPortBusy = (Test-NetConnection -ComputerName 'localhost' -Port $HttpPort -WarningAction SilentlyContinue).TcpTestSucceeded
+    while ($apacheLike -or $httpPortBusy) {
+        Write-Host "`n!!! EXISTING APACHE/WEB SERVER DETECTED !!!" -ForegroundColor Red
+        if ($apacheLike) { Write-Host "  Service(s): $($apacheLike.Name -join ', ')" -ForegroundColor Yellow }
+        if ($httpPortBusy) { Write-Host "  Port $HttpPort is already in use - this WILL fail to bind as-is." -ForegroundColor Red }
+        switch (Read-Choice @(
+            "Continue anyway (fine if it's just a same-ish-named service, not an actual port clash)"
+            'Use a different HTTP port for this install'
+            'Abort so I can clear it down / reconfigure it myself first'
+        )) {
+            1 { break }
+            2 {
+                $resp = Read-Host "New HTTP port [$HttpPort]"
+                if ($resp -match '^\d+$') { $Script:HttpPort = [int]$resp }
+            }
+            3 { throw 'Halted: existing Apache/web server needs to be dealt with first.' }
+        }
+        $apacheLike = Get-Service | Where-Object { $_.DisplayName -like '*Apache*' -and $_.Name -ne $Script:ApacheServiceName }
+        $httpPortBusy = (Test-NetConnection -ComputerName 'localhost' -Port $HttpPort -WarningAction SilentlyContinue).TcpTestSucceeded
     }
 
-    if (-not $UseExternalDb) {
-        $mysqlLike = Get-Service | Where-Object { $_.DisplayName -like '*MySQL*' -and $_.Name -ne $Script:MysqlServiceName }
-        if ($mysqlLike) { $findings.Add("Existing MySQL-like service(s): $($mysqlLike.Name -join ', ')") }
-        if ((Test-NetConnection -ComputerName 'localhost' -Port $DbPort -WarningAction SilentlyContinue).TcpTestSucceeded) {
-            $findings.Add("Port $DbPort is already in use by something (pass -UseExternalDb to point the wiki at it instead of installing a new MySQL).")
+    if ($Script:UseHttps -and (Test-NetConnection -ComputerName 'localhost' -Port 443 -WarningAction SilentlyContinue).TcpTestSucceeded) {
+        Write-Host "`n!!! PORT 443 ALREADY IN USE !!!" -ForegroundColor Red
+        Write-Host '  (e.g. IIS, another web server, or a previous HTTPS setup) - the HTTPS vhost will fail to start.' -ForegroundColor Red
+        switch (Read-Choice @('Continue anyway', 'Skip HTTPS for this run (HTTP only)', 'Abort so I can clear it down myself first')) {
+            2 { $Script:PublicUrl = $null; $Script:CertPath = $null; $Script:CertKeyPath = $null; Set-HttpsFlag }
+            3 { throw 'Halted: something else already owns port 443.' }
         }
     }
 
-    if ($findings.Count -eq 0) { return }
-    Write-Host "`n!!! PRE-EXISTING APACHE/MYSQL DETECTED !!!" -ForegroundColor Red
-    $findings | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
-    Write-Host "This script installs its own isolated Apache/MySQL under $InstallRoot on port(s) $HttpPort/$DbPort - it will not touch what's listed above unless a service name collides (handled separately). Continuing is usually safe." -ForegroundColor Yellow
-    $resp = Read-Host "`nType YES to continue, anything else halts (or re-run with -Force/-NonInteractive to skip this prompt)"
-    if ($resp -ne 'YES') { throw 'Halted: did not confirm continuing alongside pre-existing Apache/MySQL.' }
+    if ($UseExternalDb) { return }
+    $mysqlLike = Get-Service | Where-Object { $_.DisplayName -like '*MySQL*' -and $_.Name -ne $Script:MysqlServiceName }
+    $dbPortBusy = (Test-NetConnection -ComputerName 'localhost' -Port $DbPort -WarningAction SilentlyContinue).TcpTestSucceeded
+    while ($mysqlLike -or $dbPortBusy) {
+        Write-Host "`n!!! EXISTING MYSQL DETECTED !!!" -ForegroundColor Red
+        if ($mysqlLike) { Write-Host "  Service(s): $($mysqlLike.Name -join ', ')" -ForegroundColor Yellow }
+        if ($dbPortBusy) { Write-Host "  Port $DbPort is already in use - this WILL fail to bind as-is." -ForegroundColor Red }
+        switch (Read-Choice @(
+            "Continue anyway (fine if it's just a same-ish-named service, not an actual port clash)"
+            'Use THIS existing MySQL instead of installing a separate one'
+            'Use a different port for a new, separate MySQL install'
+            'Abort so I can clear it down / reconfigure it myself first'
+        )) {
+            1 { break }
+            2 {
+                $Script:UseExternalDb = $true
+                $Script:DbHost = (Read-Host "Database host [$DbHost]"); if (-not $Script:DbHost) { $Script:DbHost = $DbHost }
+                $resp = Read-Host "Database port [$DbPort]"; if ($resp -match '^\d+$') { $Script:DbPort = [int]$resp }
+                $Script:ExternalDbAdminUser = (Read-Host "Admin username on that database [$ExternalDbAdminUser]"); if (-not $Script:ExternalDbAdminUser) { $Script:ExternalDbAdminUser = $ExternalDbAdminUser }
+                $Script:ExternalDbAdminPassword = Read-Host 'Admin password on that database'
+                return
+            }
+            3 {
+                $resp = Read-Host "New MySQL port [$DbPort]"
+                if ($resp -match '^\d+$') { $Script:DbPort = [int]$resp }
+            }
+            4 { throw 'Halted: existing MySQL needs to be dealt with first.' }
+        }
+        $mysqlLike = Get-Service | Where-Object { $_.DisplayName -like '*MySQL*' -and $_.Name -ne $Script:MysqlServiceName }
+        $dbPortBusy = (Test-NetConnection -ComputerName 'localhost' -Port $DbPort -WarningAction SilentlyContinue).TcpTestSucceeded
+    }
 }
 
 function Get-RemoteFile {
