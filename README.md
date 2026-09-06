@@ -119,12 +119,13 @@ Two independent checks, both interactive by default (skip with `-Force` /
    with the *exact* name this script would use (`MediaWikiApache` /
    `MediaWikiMySQL`), it halts for explicit confirmation before touching it.
 
-`Down` only ever uninstalls a service or deletes the install root if this
-script is the one that created it (tracked in
+`Down` only ever stops, uninstalls, or deletes anything Apache/MySQL-related
+if this script is the one that created it (tracked in
 `_provisioning\install-state.json`) — a pre-existing MySQL pointed at via
 `-UseExternalDb`, or a service this script found already running under its
-expected name, is never stopped/removed, only the wiki's own database/user
-is dropped from it.
+expected name, is never stopped, removed, or has any database/user dropped
+from it. Only `Down`'s deletion of the install root itself (still gated the
+same way) removes this install's own data.
 
 ### HTTPS
 
@@ -146,8 +147,9 @@ real certificate, use the companion script:
 
 `-UseExternalDb -DbHost <host> -ExternalDbAdminUser <user> -ExternalDbAdminPassword <pass>`
 points the wiki at an existing MySQL instance instead of installing one —
-requires a `mysql` client on `PATH`. `Down` only ever drops the wiki's own
-database/user on it, never touches the service.
+requires a `mysql` client on `PATH`. `Down` never touches it at all (no
+stop, no database/user drop) - the wiki's database/user are left in place
+for you to remove manually if you want them gone.
 
 ### Entra ID (Azure AD) SSO
 

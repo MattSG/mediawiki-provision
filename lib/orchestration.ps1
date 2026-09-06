@@ -74,40 +74,31 @@ function Invoke-Up {
 
 function Invoke-Down {
     $state = Get-State
-    if (-not $DbRootPassword) { $DbRootPassword = Get-SavedPassword 'DB root pass' }
     Write-Step "Tearing down$(if ($KeepData) { ' (stop only, -KeepData set)' } else { ' (FULL WIPE)' })..."
 
-    # --- Apache ---
-    if (Get-Service -Name $Script:ApacheServiceName -ErrorAction SilentlyContinue) {
+    # --- Apache: only ever stopped/removed if THIS install created it. A pre-existing Apache
+    # (coexisting with after Confirm-Override) is never stopped, let alone removed, by Down.
+    if ($state.apacheServiceCreated -and (Get-Service -Name $Script:ApacheServiceName -ErrorAction SilentlyContinue)) {
         Stop-Service -Name $Script:ApacheServiceName -Force -ErrorAction SilentlyContinue
-        if (-not $KeepData -and $state.apacheServiceCreated) {
+        if (-not $KeepData) {
             $httpdExe = Join-Path $Script:ApacheDir 'bin\httpd.exe'
             if (Test-Path $httpdExe) { & $httpdExe -k uninstall -n $Script:ApacheServiceName 2>&1 | Out-Null }
         }
+    } elseif ($state.apacheIsForeign) {
+        Write-Note "Apache service '$($Script:ApacheServiceName)' pre-existed - leaving it running, untouched."
     }
 
-    # --- MySQL ---
-    if ($UseExternalDb) {
-        if (-not $KeepData -and $ExternalDbAdminPassword) {
-            $mysqlExe = (Get-Command mysql.exe, mysql -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-            if ($mysqlExe) {
-                Write-Note "Dropping only the '$($Script:DbName)' database/user on the external MySQL (it isn't ours to touch otherwise)."
-                "DROP DATABASE IF EXISTS $($Script:DbName); DROP USER IF EXISTS '$($Script:DbUser)'@'%'; DROP USER IF EXISTS '$($Script:DbUser)'@'localhost';" | & $mysqlExe -h $DbHost -P $DbPort -u $ExternalDbAdminUser "-p$ExternalDbAdminPassword" 2>$null
-            }
-        }
-    } elseif (Get-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue) {
-        if (-not $KeepData -and $state.mysqlIsForeign) {
-            $mysqlExe = Join-Path $Script:MysqlDir 'bin\mysql.exe'
-            if ((Test-Path $mysqlExe) -and $DbRootPassword) {
-                Write-Note "Dropping only the '$($Script:DbName)' database/user (MySQL instance pre-existed - leaving it running)."
-                "DROP DATABASE IF EXISTS $($Script:DbName); DROP USER IF EXISTS '$($Script:DbUser)'@'localhost';" | & $mysqlExe -uroot -p"$DbRootPassword" 2>$null
-            }
-        } else {
-            Stop-Service -Name $Script:MysqlServiceName -Force -ErrorAction SilentlyContinue
-            if (-not $KeepData -and $state.mysqlServiceCreated) {
-                $mysqldExe = Join-Path $Script:MysqlDir 'bin\mysqld.exe'
-                if (Test-Path $mysqldExe) { & $mysqldExe --remove $Script:MysqlServiceName 2>&1 | Out-Null }
-            }
+    # --- MySQL: same rule - external (-UseExternalDb) or foreign (pre-existing, name-collided)
+    # instances are never stopped, removed, or have anything dropped from them by Down. Only a
+    # MySQL this install actually created gets stopped/removed (its data goes with the rest of
+    # $Script:Root below anyway, since that's this install's own isolated copy).
+    if ($UseExternalDb -or $state.mysqlIsForeign) {
+        Write-Note 'MySQL is external/pre-existing - leaving its service and databases untouched.'
+    } elseif ($state.mysqlServiceCreated -and (Get-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue)) {
+        Stop-Service -Name $Script:MysqlServiceName -Force -ErrorAction SilentlyContinue
+        if (-not $KeepData) {
+            $mysqldExe = Join-Path $Script:MysqlDir 'bin\mysqld.exe'
+            if (Test-Path $mysqldExe) { & $mysqldExe --remove $Script:MysqlServiceName 2>&1 | Out-Null }
         }
     }
 
