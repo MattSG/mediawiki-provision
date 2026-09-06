@@ -128,8 +128,8 @@ param(
     # the vendor page shown in the error, copy the current link, and pass the override here.
     [string]$ApacheZipUrl    = 'https://www.apachelounge.com/download/VS17/binaries/httpd-2.4.66-251206-Win64-VS17.zip',
     [string]$ModFcgidZipUrl  = 'https://www.apachelounge.com/download/VS17/modules/mod_fcgid-2.3.10-win64-VS17.zip',
-    [string]$PhpZipUrl       = 'https://downloads.php.net/~windows/releases/php-8.2.33-nts-Win32-vs16-x64.zip',
-    [string]$ApcuZipUrl      = 'https://downloads.php.net/~windows/pecl/releases/apcu/5.1.28/php_apcu-5.1.28-8.2-nts-vs16-x64.zip',
+    [string]$PhpZipUrl       = 'https://downloads.php.net/~windows/releases/php-8.3.33-nts-Win32-vs16-x64.zip',
+    [string]$ApcuZipUrl      = 'https://downloads.php.net/~windows/pecl/releases/apcu/5.1.28/php_apcu-5.1.28-8.3-nts-vs16-x64.zip',
     [string]$MySqlZipUrl     = 'https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11-winx64.zip',
     [string]$PythonZipUrl    = 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip',
 

@@ -8,13 +8,13 @@ function Install-Php {
         Write-Note 'PHP already present.'
     } else {
         Write-Step 'Downloading + extracting PHP (windows.php.net)...'
-        $zip = Join-Path $Script:DownloadDir 'php.zip'
+        $zip = Join-Path $Script:DownloadDir (Split-Path $PhpZipUrl -Leaf)
         Get-RemoteFile -Url $PhpZipUrl -Destination $zip -VendorPageOnFailure 'https://windows.php.net/download/'
         New-Item -ItemType Directory -Force -Path $Script:PhpDir | Out-Null
         Expand-Archive -Path $zip -DestinationPath $Script:PhpDir -Force
 
         Write-Step 'Downloading + installing APCu extension (object/opcode cache)...'
-        $apcuZip = Join-Path $Script:DownloadDir 'apcu.zip'
+        $apcuZip = Join-Path $Script:DownloadDir (Split-Path $ApcuZipUrl -Leaf)
         try {
             Get-RemoteFile -Url $ApcuZipUrl -Destination $apcuZip -VendorPageOnFailure 'https://windows.php.net/downloads/pecl/releases/apcu/'
             $apcuTmp = Join-Path $Script:DownloadDir 'apcu_extracted'

@@ -6,12 +6,15 @@
 function Install-ApacheBinaries {
     if (Test-Path (Join-Path $Script:ApacheDir 'bin\httpd.exe')) { Write-Note 'Apache binaries already present.'; return }
     Write-Step 'Downloading + extracting Apache HTTP Server (Apache Lounge)...'
-    $zip = Join-Path $Script:DownloadDir 'httpd.zip'
+    # Cache filename derived from the URL (not a fixed name like "httpd.zip") so bumping the
+    # version in -ApacheZipUrl naturally invalidates the old cached download instead of silently
+    # reusing it.
+    $zip = Join-Path $Script:DownloadDir (Split-Path $ApacheZipUrl -Leaf)
     Get-RemoteFile -Url $ApacheZipUrl -Destination $zip -VendorPageOnFailure 'https://www.apachelounge.com/download.html'
     Expand-ToDir -ZipPath $zip -TargetDir $Script:ApacheDir
 
     Write-Step 'Downloading + extracting mod_fcgid (Apache Lounge)...'
-    $fcgidZip = Join-Path $Script:DownloadDir 'mod_fcgid.zip'
+    $fcgidZip = Join-Path $Script:DownloadDir (Split-Path $ModFcgidZipUrl -Leaf)
     Get-RemoteFile -Url $ModFcgidZipUrl -Destination $fcgidZip -VendorPageOnFailure 'https://www.apachelounge.com/download.html'
     $fcgidTmp = Join-Path $Script:DownloadDir 'mod_fcgid_extracted'
     Expand-Archive -Path $fcgidZip -DestinationPath $fcgidTmp -Force

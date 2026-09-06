@@ -38,7 +38,7 @@ FLUSH PRIVILEGES;
         Write-Note 'MySQL binaries already present.'
     } else {
         Write-Step 'Downloading + extracting MySQL Community Server (zip, no installer)...'
-        $zip = Join-Path $Script:DownloadDir 'mysql.zip'
+        $zip = Join-Path $Script:DownloadDir (Split-Path $MySqlZipUrl -Leaf)
         Get-RemoteFile -Url $MySqlZipUrl -Destination $zip -VendorPageOnFailure 'https://dev.mysql.com/downloads/mysql/ (choose "Windows (x86, 64-bit), ZIP Archive")'
         Expand-ToDir -ZipPath $zip -TargetDir $Script:MysqlDir
     }
