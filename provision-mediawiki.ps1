@@ -146,7 +146,8 @@ param(
     [string]$ComposerPharUrl = 'https://getcomposer.org/composer.phar',
     [string]$CaBundleUrl     = 'https://curl.se/ca/cacert.pem',
     [string]$GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe',
-    [string]$ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip',
+    [string]$ImageMagickUrl = 'https://download.imagemagick.org/archive/binaries/ImageMagick-7.1.2-31-Q16-x64-static.exe',
+    [string]$ImageMagickZipUrl = $null,
     [string]$PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip',
     [string]$PopplerZipUrl = $null,
 

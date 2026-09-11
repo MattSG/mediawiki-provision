@@ -43,8 +43,9 @@ testing (see below) — it never runs as part of `Up`/`Down`.
   (`pdfinfo` and `pdftotext`). Pass `-InstallPdfTools` (or set `InstallPdfTools = $true` in
   the config file) to install pinned Windows builds under `pdf-tools\`; the
   generated PdfHandler settings use absolute paths, so no machine-wide `PATH`
-  change is required. The default metadata package is the official Xpdf
-  Windows command-line bundle; the PDF URL parameters also accept local mirrors.
+  change is required. The default packages are official Ghostscript,
+  ImageMagick, and Xpdf Windows releases; the PDF URL parameters also accept
+  local mirrors.
 - Generated `LocalSettings.php` is written inside one deterministic managed
   block and passed through `php -l`; reruns replace only that block.
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,

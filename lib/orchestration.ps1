@@ -27,19 +27,31 @@ function Invoke-Up {
     if (Confirm-Step 'Install/verify the embedded Python runtime.') { Install-Python }
     if ($InstallPdfTools -and (Confirm-Step 'Install/verify PdfHandler tools (Ghostscript, ImageMagick, Poppler).')) { Install-PdfTools }
 
-    if (Confirm-Step 'Download/verify MediaWiki core.') { Get-MediaWikiCore }
-    if (Confirm-Step 'Install SemanticMediaWiki.') { Install-SemanticMediaWiki }
-    if (Confirm-Step 'Install SemanticResultFormats and SemanticBreadcrumbLinks.') { Install-SemanticGithubComponents }
-    $sso = Get-SsoConfig
-    $extensionsToInstall = $Script:ZipExtensions + @(if ($sso.Enabled) { 'PluggableAuth', 'OpenIDConnect' })
-    if (Confirm-Step "Install extensions: $($extensionsToInstall -join ', ').") {
-        Write-Step 'Installing extensions (GitHub zip archives + composer where needed)...'
-        Install-ZipComponents -Names $extensionsToInstall -SubDir 'extensions' -RepoPrefix 'mediawiki-extensions-' -MarkerFile 'extension.json'
+    $apacheWasRunning = (Get-Service -Name $Script:ApacheServiceName -ErrorAction SilentlyContinue).Status -eq 'Running'
+    if ($apacheWasRunning) {
+        Write-Step 'Stopping Apache while replacing MediaWiki core/extensions/skins...'
+        Stop-Service -Name $Script:ApacheServiceName -Force -ErrorAction Stop
     }
-    if (Confirm-Step 'Install the external Mermaid extension.') { Install-Mermaid }
-    if (Confirm-Step "Install skins: $($Script:ZipSkins -join ', ').") {
-        Write-Step 'Installing skins (GitHub zip archives)...'
-        Install-ZipComponents -Names $Script:ZipSkins -SubDir 'skins' -RepoPrefix 'mediawiki-skins-' -MarkerFile 'skin.json'
+    try {
+        if (Confirm-Step 'Download/verify MediaWiki core.') { Get-MediaWikiCore }
+        if (Confirm-Step 'Install SemanticMediaWiki.') { Install-SemanticMediaWiki }
+        if (Confirm-Step 'Install SemanticResultFormats and SemanticBreadcrumbLinks.') { Install-SemanticGithubComponents }
+        $sso = Get-SsoConfig
+        $extensionsToInstall = $Script:ZipExtensions + @(if ($sso.Enabled) { 'PluggableAuth', 'OpenIDConnect' })
+        if (Confirm-Step "Install extensions: $($extensionsToInstall -join ', ').") {
+            Write-Step 'Installing extensions (GitHub zip archives + composer where needed)...'
+            Install-ZipComponents -Names $extensionsToInstall -SubDir 'extensions' -RepoPrefix 'mediawiki-extensions-' -MarkerFile 'extension.json'
+        }
+        if (Confirm-Step 'Install the external Mermaid extension.') { Install-Mermaid }
+        if (Confirm-Step "Install skins: $($Script:ZipSkins -join ', ').") {
+            Write-Step 'Installing skins (GitHub zip archives)...'
+            Install-ZipComponents -Names $Script:ZipSkins -SubDir 'skins' -RepoPrefix 'mediawiki-skins-' -MarkerFile 'skin.json'
+        }
+    } finally {
+        if ($apacheWasRunning) {
+            Write-Step 'Restarting Apache after replacing MediaWiki core/extensions/skins...'
+            Start-Service -Name $Script:ApacheServiceName -ErrorAction Stop
+        }
     }
     if (Confirm-Step 'Create/verify the wiki database and run the web installer if needed.') { Install-MediaWikiDatabase }
     if (Confirm-Step 'Configure file uploads directory and permissions.') { Set-UploadsAndPermissions }

@@ -65,7 +65,9 @@
     ComposerPharUrl = 'https://getcomposer.org/composer.phar'
     CaBundleUrl = 'https://curl.se/ca/cacert.pem'
     GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe'
-    ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip'
+    ImageMagickUrl = 'https://download.imagemagick.org/archive/binaries/ImageMagick-7.1.2-31-Q16-x64-static.exe'
+    # Legacy override name; use this only for an approved portable archive mirror.
+    ImageMagickZipUrl = $null
     PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip'
     # Legacy override name; use this only when an approved Poppler Windows mirror is required.
     PopplerZipUrl = $null

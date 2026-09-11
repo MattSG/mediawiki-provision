@@ -40,9 +40,17 @@ function Install-PdfTools {
         if ($proc.ExitCode -ne 0) { throw "Ghostscript installer failed with exit code $($proc.ExitCode)." }
     }
     if (-not $paths.ImageMagick) {
-        $archive = Join-Path $Script:DownloadDir (Split-Path $ImageMagickZipUrl -Leaf)
-        Get-RemoteFile -Url $ImageMagickZipUrl -Destination $archive -VendorPageOnFailure 'https://imagemagick.org/download/'
-        Expand-ToDir -ZipPath $archive -TargetDir $imageDir
+        if ($ImageMagickZipUrl) {
+            $archive = Join-Path $Script:DownloadDir (Split-Path $ImageMagickZipUrl -Leaf)
+            Get-RemoteFile -Url $ImageMagickZipUrl -Destination $archive -VendorPageOnFailure 'https://imagemagick.org/download/'
+            Expand-ToDir -ZipPath $archive -TargetDir $imageDir
+        } else {
+            $installer = Join-Path $Script:DownloadDir (Split-Path $ImageMagickUrl -Leaf)
+            Get-RemoteFile -Url $ImageMagickUrl -Destination $installer -VendorPageOnFailure 'https://imagemagick.org/download/'
+            New-Item -ItemType Directory -Force -Path $imageDir | Out-Null
+            $proc = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/NORESTART', "/DIR=$imageDir") -Wait -PassThru
+            if ($proc.ExitCode -ne 0) { throw "ImageMagick installer failed with exit code $($proc.ExitCode)." }
+        }
     }
     if (-not $paths.PdfInfo -or -not $paths.PdfToText) {
         $metadataUrl = if ($PopplerZipUrl) { $PopplerZipUrl } else { $PdfMetadataToolsZipUrl }
