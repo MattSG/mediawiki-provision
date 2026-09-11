@@ -58,7 +58,33 @@ function Unregister-LogRotationTask {
 # Runs one backup (DB dump + LocalSettings.php/images archive) - callable directly
 # (`-Action Backup`) or from the scheduled task. External-DB backups need a `mysqldump` client
 # on PATH and -ExternalDbAdminPassword; a local install always has its own mysqldump.exe.
-function Invoke-WikiBackup {
+function Send-BackupFailureAlert {
+    param([string]$ErrorMessage)
+    $recipients = @($BackupAlertRecipients | ForEach-Object { $_ -split '[,;]' } | ForEach-Object Trim | Where-Object { $_ })
+    if (-not $recipients) { return }
+    if (-not $MailRelay) { Write-Warn 'Backup failed, but no MailRelay is configured for alert delivery.'; return }
+    try {
+        $from = if ($MailFrom) { $MailFrom } elseif ($MailUsername) { $MailUsername } else { "mediawiki@$env:COMPUTERNAME" }
+        $mailArgs = @{
+            To = $recipients
+            From = $from
+            Subject = "MediaWiki backup failed on $env:COMPUTERNAME"
+            Body = "The MediaWiki backup failed at $(Get-Date -Format o).`r`n`r`n$ErrorMessage"
+            SmtpServer = $MailRelay
+            Port = $MailPort
+        }
+        if ($MailUsername -and $MailPassword) {
+            $mailArgs.Credential = [pscredential]::new($MailUsername, $MailPassword)
+            $mailArgs.UseSsl = ($MailPort -eq 465 -or $MailPort -eq 587)
+        }
+        Send-MailMessage @mailArgs -ErrorAction Stop
+        Write-Note "Backup failure alert sent to $($recipients -join ', ')."
+    } catch {
+        Write-Warn "Backup failure alert could not be sent: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-WikiBackupCore {
     Write-Step "Backing up to $BackupPath..."
     New-Item -ItemType Directory -Force -Path $BackupPath | Out-Null
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -80,7 +106,7 @@ function Invoke-WikiBackup {
         }
         Write-Note "Database dump: $dumpFile"
     } else {
-        Write-Warn 'Could not locate mysqldump/DB credentials - skipping database dump this run.'
+        throw 'Could not locate mysqldump or database credentials for the backup.'
     }
 
     $filesZip = Join-Path $BackupPath "files-$stamp.zip"
@@ -94,12 +120,26 @@ function Invoke-WikiBackup {
     icacls $BackupPath /inheritance:r /grant:r "$($env:USERNAME):F" "SYSTEM:F" | Out-Null
 }
 
+function Invoke-WikiBackup {
+    try { Invoke-WikiBackupCore }
+    catch {
+        Send-BackupFailureAlert -ErrorMessage $_.Exception.Message
+        throw
+    }
+}
+
 function Register-BackupTask {
     if (Get-ScheduledTask -TaskName 'Backup' -TaskPath $Script:TaskFolder -ErrorAction SilentlyContinue) {
         Write-Note 'Backup scheduled task already registered.'; return
     }
     Write-Step "Registering scheduled daily backup task ($BackupRetentionDays days retention)..."
     $extraArgs = if ($UseExternalDb) { " -UseExternalDb -DbHost `"$DbHost`" -DbPort $DbPort -ExternalDbAdminUser `"$ExternalDbAdminUser`"" } else { '' }
+    if ($MailRelay -and $BackupAlertRecipients) {
+        $recipients = $BackupAlertRecipients -join ','
+        $extraArgs += " -MailRelay `"$MailRelay`" -MailPort $MailPort -BackupAlertRecipients `"$recipients`""
+        if ($MailUsername) { $extraArgs += " -MailUsername `"$MailUsername`"" }
+        if ($MailFrom) { $extraArgs += " -MailFrom `"$MailFrom`"" }
+    }
     $argument = "-NoProfile -ExecutionPolicy Bypass -File `"$Script:SelfPath`" -Action Backup -InstallRoot `"$Script:Root`" -BackupPath `"$BackupPath`" -BackupRetentionDays $BackupRetentionDays -NonInteractive$extraArgs"
     $action = New-ScheduledTaskAction -Execute $Script:PwshExe -Argument $argument
     $trigger = New-ScheduledTaskTrigger -Daily -At '02:00'

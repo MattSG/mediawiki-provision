@@ -141,6 +141,8 @@ function Invoke-SetupWizard {
             $Script:EnableBackups = $true
             $resp = Read-Host "Backup retention in days [$BackupRetentionDays]"
             if ($resp -match '^\d+$') { $Script:BackupRetentionDays = [int]$resp }
+            $resp = Read-Host 'Backup failure email list (comma-separated, optional)'
+            if ($resp) { $Script:BackupAlertRecipients = @($resp -split '[,;]' | ForEach-Object Trim | Where-Object { $_ }) }
         }
     }
     Write-Host ''

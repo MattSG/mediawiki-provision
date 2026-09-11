@@ -71,6 +71,8 @@ param(
     [ValidateRange(1, 65535)][int]$MailPort = 587,
     [string]$MailUsername = $null,
     [securestring]$MailPassword = $null,
+    [string]$MailFrom = $null,
+    [string[]]$BackupAlertRecipients = @(),
     [string]$DbRootPassword = $null,
     [string]$DbUserPassword = $null,
     [int]$HttpPort = 8080,
@@ -293,6 +295,9 @@ function Assert-ProvisionConfig {
     if (($MailUsername -or $MailPassword) -and -not $MailRelay) { throw 'MailRelay is required when SMTP credentials are configured.' }
     if ($MailRelay -and $MailUsername -and -not $MailPassword) { throw 'MailPassword is required when MailUsername is configured.' }
     if ($MailPassword -and -not $MailUsername) { throw 'MailUsername is required when MailPassword is configured.' }
+    foreach ($recipient in @($BackupAlertRecipients | ForEach-Object { $_ -split '[,;]' } | ForEach-Object Trim | Where-Object { $_ })) {
+        if ($recipient -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') { throw "Invalid BackupAlertRecipients address: $recipient" }
+    }
     if ($DownloadChecksums) {
         foreach ($key in $DownloadChecksums.Keys) {
             if ([string]$DownloadChecksums[$key] -notmatch '^[0-9A-Fa-f]{64}$') { throw "DownloadChecksums[$key] must be a 64-character SHA-256 hex value." }

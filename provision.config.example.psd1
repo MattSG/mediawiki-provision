@@ -10,6 +10,8 @@
     MailUsername = $null
     # MailPassword may be an encrypted ConvertFrom-SecureString value.
     MailPassword = $null
+    MailFrom = $null
+    BackupAlertRecipients = @()
     HttpPort = 8080
     Environment = 'Dev'
     KeepData = $false
