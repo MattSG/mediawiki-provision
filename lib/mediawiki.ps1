@@ -104,8 +104,7 @@ function Install-ZipComponents {
         try {
             Get-GitHubZip -Owner 'wikimedia' -Repo "$RepoPrefix$name" -Branch $MwBranch -TargetDir $dir
         } catch {
-            Write-Warn "could not download $name for branch $MwBranch - skipping. ($($_.Exception.Message))"
-            continue
+            throw "Could not download required component '$name' for branch '$MwBranch': $($_.Exception.Message)"
         }
         if (Test-ComposerInstallRequired -Dir $dir) {
             Invoke-Composer -ComposerArgs @('install', '--no-dev') -WorkingDir $dir
@@ -240,6 +239,7 @@ function Set-PerformanceAndCaching {
     New-Item -ItemType Directory -Force -Path $Script:CacheDir | Out-Null
     $debugLine = if ($Environment -eq 'Dev') { '$wgShowExceptionDetails = true;' } else { '$wgShowExceptionDetails = false;' }
     $cacheType = if ($Script:ApcuAvailable) { 'CACHE_ACCEL' } else { 'CACHE_DB' }
+    $cachePath = $Script:CacheDir -replace '\\', '\\\\'
 
     # Logo (optional): copied into www/resources/assets so it's served the same way as core's
     # own bundled assets, referenced via $wgResourceBasePath so it survives $wgScriptPath changes.
@@ -259,11 +259,13 @@ $($Script:MarkerBegin)
 // APCu is process-local under Apache/FastCGI; sessions must survive worker changes.
 `$wgSessionCacheType  = CACHE_DB;
 `$wgMessageCacheType  = $cacheType;
-`$wgParserCacheType   = $cacheType;
+// MediaWiki recommends DB-backed parser output when APCu is the main cache.
+`$wgParserCacheType   = CACHE_DB;
+`$wgCacheDirectory    = '$cachePath';
 
 // --- Anonymous-view file cache: skips PHP entirely for logged-out page views ---
 `$wgUseFileCache      = true;
-`$wgFileCacheDirectory = '$($Script:CacheDir -replace '\\','\\\\')';
+`$wgFileCacheDirectory = '$cachePath';
 `$wgUseGzip           = true;
 
 // --- ResourceLoader / static asset caching ---
@@ -311,6 +313,14 @@ $logoLine
     foreach ($ext in $Script:ZipExtensions) {
         if (Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) { $block += "`nwfLoadExtension( '$ext' );" }
     }
+    if (Test-Path (Join-Path $Script:WwwDir 'extensions\Linter')) {
+        $block += @"
+
+wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
+`$wgParsoidSettings = [ 'useSelser' => true, 'linting' => true ];
+`$wgVisualEditorParsoidAutoConfig = false;
+"@
+    }
     if (Test-Path (Join-Path $Script:WwwDir 'extensions\SemanticMediaWiki')) {
         $block += "`nwfLoadExtension( 'SemanticMediaWiki' );"
     }
@@ -318,6 +328,19 @@ $logoLine
         if ((Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) -and ($block -notmatch "wfLoadExtension\( '$ext' \)")) {
             $block += "`nwfLoadExtension( '$ext' );"
         }
+    }
+    if (Test-Path (Join-Path $Script:WwwDir 'extensions\PdfHandler')) {
+        $hasGhostscript = @(Get-Command gs, gswin64c -ErrorAction SilentlyContinue).Count -gt 0
+        $hasImageMagick = @(Get-Command magick, convert -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch '\\System32\\convert\.exe$' }).Count -gt 0
+        $hasPdfInfo = @(Get-Command pdfinfo -ErrorAction SilentlyContinue).Count -gt 0
+        $hasPdfToText = @(Get-Command pdftotext -ErrorAction SilentlyContinue).Count -gt 0
+        $pdfTools = @(
+            if (-not $hasGhostscript) { 'Ghostscript (gs/gswin64c)' }
+            if (-not $hasImageMagick) { 'ImageMagick (magick/convert)' }
+            if (-not $hasPdfInfo) { 'Poppler pdfinfo' }
+            if (-not $hasPdfToText) { 'Poppler pdftotext' }
+        )
+        if ($pdfTools) { throw "PdfHandler requires: $($pdfTools -join ', '). Install these tools and put them on PATH before provisioning." }
     }
     $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
     $pythonExe = Join-Path $Script:PythonDir 'python.exe'
@@ -471,4 +494,3 @@ Runbooks, service notes, recurring procedures, and operational records.</text></
     Invoke-MaintenanceScript -LegacyName 'importDump.php' -ModernArgs @('importDump') -ExtraArgs @($dump) -FailureMessage 'Namespace home import failed.' -LogOutput
     New-Item -ItemType File -Path $marker -Force | Out-Null
 }
-

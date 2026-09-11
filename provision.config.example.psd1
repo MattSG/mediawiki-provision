@@ -19,6 +19,8 @@
     DbHost = '127.0.0.1'
     ExternalDbAdminUser = 'root'
     ExternalDbAdminPassword = $null
+    # Required for external Prod DBs; use the wiki host's exact MySQL account host where possible.
+    ExternalDbUserHost = $null
 
     # HTTPS: provide all three values, or leave them null for HTTP.
     PublicUrl = $null

@@ -107,9 +107,19 @@ KeepAliveTimeout 5
     DocumentRoot "$($Script:WwwDir -replace '\\','/')"
     <Directory "$($Script:WwwDir -replace '\\','/')">
         Options FollowSymLinks ExecCGI
-        AllowOverride All
+        AllowOverride FileInfo AuthConfig Limit
         Require all granted
         DirectoryIndex index.php
+    </Directory>
+    <Directory "$($Script:WwwDir -replace '\\','/')/images">
+        Options -ExecCGI -Indexes
+        AllowOverride None
+        Require all granted
+        <FilesMatch "\.(php|phtml|phps?|php[3457]|cgi|pl|py)$">
+            SetHandler None
+            ForceType text/plain
+        </FilesMatch>
+        Header always set X-Content-Type-Options nosniff
     </Directory>
 
     <IfModule mod_deflate.c>
@@ -147,9 +157,19 @@ $httpBody
     DocumentRoot "$($Script:WwwDir -replace '\\','/')"
     <Directory "$($Script:WwwDir -replace '\\','/')">
         Options FollowSymLinks ExecCGI
-        AllowOverride All
+        AllowOverride FileInfo AuthConfig Limit
         Require all granted
         DirectoryIndex index.php
+    </Directory>
+    <Directory "$($Script:WwwDir -replace '\\','/')/images">
+        Options -ExecCGI -Indexes
+        AllowOverride None
+        Require all granted
+        <FilesMatch "\.(php|phtml|phps?|php[3457]|cgi|pl|py)$">
+            SetHandler None
+            ForceType text/plain
+        </FilesMatch>
+        Header always set X-Content-Type-Options nosniff
     </Directory>
     <IfModule mod_deflate.c>
         AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript application/json
@@ -188,4 +208,3 @@ $httpBody
     Restart-Service -Name $Script:ApacheServiceName -Force
     Write-Note "Apache service '$($Script:ApacheServiceName)' running on port $HttpPort."
 }
-

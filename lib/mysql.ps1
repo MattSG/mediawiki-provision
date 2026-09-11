@@ -3,6 +3,12 @@
 # ---------------------------------------------------------------------------
 # STEP 4: MySQL (native, direct zip download - no installer, no service manager)
 # ---------------------------------------------------------------------------
+function ConvertTo-MySqlLiteral {
+    param([AllowEmptyString()][string]$Value)
+    $escaped = $Value.Replace('\', '\\').Replace("'", "''")
+    return "'$escaped'"
+}
+
 function Install-MySql {
     param([hashtable]$State)
 
@@ -15,15 +21,27 @@ function Install-MySql {
         if (-not $DbUserPassword) { $DbUserPassword = New-RandomPassword }
         $Script:DbUserPassword = $DbUserPassword
         Save-DbCredentials -RootPass $null -UserPass $DbUserPassword
-        $dbUserHost = if ($DbHost -in @('127.0.0.1', 'localhost', '::1')) { 'localhost' } else { '%' }
+        if ($ExternalDbUserHost) {
+            if ($ExternalDbUserHost -match "['\\`"]") { throw '-ExternalDbUserHost cannot contain SQL quoting characters.' }
+            $dbUserHost = $ExternalDbUserHost
+        } elseif ($DbHost -in @('127.0.0.1', 'localhost', '::1')) {
+            $dbUserHost = 'localhost'
+        } elseif ($Environment -eq 'Prod') {
+            throw '-ExternalDbUserHost is required for external Prod databases; avoid granting the wiki account to every host.'
+        } else {
+            $dbUserHost = '%'
+        }
+        $dbUserHostSql = ConvertTo-MySqlLiteral $dbUserHost
+        $dbUserPasswordSql = ConvertTo-MySqlLiteral $DbUserPassword
         $sql = @"
 CREATE DATABASE IF NOT EXISTS $($Script:DbName) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '$($Script:DbUser)'@'$dbUserHost';
-ALTER USER '$($Script:DbUser)'@'$dbUserHost' IDENTIFIED BY '$DbUserPassword';
-GRANT ALL PRIVILEGES ON $($Script:DbName).* TO '$($Script:DbUser)'@'$dbUserHost';
+CREATE USER IF NOT EXISTS '$($Script:DbUser)'@$dbUserHostSql;
+ALTER USER '$($Script:DbUser)'@$dbUserHostSql IDENTIFIED BY $dbUserPasswordSql;
+GRANT ALL PRIVILEGES ON $($Script:DbName).* TO '$($Script:DbUser)'@$dbUserHostSql;
 FLUSH PRIVILEGES;
 "@
-        $sql | & $mysqlExe -h $DbHost -P $DbPort -u $ExternalDbAdminUser "-p$ExternalDbAdminPassword" 2>$null
+        $sql | & $mysqlExe -h $DbHost -P $DbPort -u $ExternalDbAdminUser "-p$ExternalDbAdminPassword" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "External MySQL database/user provisioning failed with exit code $LASTEXITCODE." }
         return
     }
 
@@ -43,7 +61,7 @@ FLUSH PRIVILEGES;
         Expand-ToDir -ZipPath $zip -TargetDir $Script:MysqlDir
     }
 
-    $dataDir = Join-Path $Script:MysqlDir 'data'
+        $dataDir = Join-Path $Script:MysqlDir 'data'
     $iniPath = Join-Path $Script:MysqlDir 'my.ini'
     if (-not (Test-Path $iniPath)) {
         # Perf tuning sized for a single-box wiki (not a shared/multi-tenant DB server):
@@ -51,6 +69,8 @@ FLUSH PRIVILEGES;
         # hold the working set (page/revision tables) in memory instead of hitting disk.
         $totalMemMB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
         $bufferPoolMB = [math]::Max(256, [math]::Min(2048, [math]::Floor($totalMemMB * 0.25)))
+        $flushAtCommit = if ($Environment -eq 'Prod') { 1 } else { 2 }
+        $performanceSchema = if ($Environment -eq 'Prod') { 'ON' } else { 'OFF' }
         @"
 [mysqld]
 port=$DbPort
@@ -62,7 +82,7 @@ collation-server=utf8mb4_unicode_ci
 # --- Perf tuning for a single-box MediaWiki install ---
 innodb_buffer_pool_size=${bufferPoolMB}M
 innodb_log_file_size=128M
-innodb_flush_log_at_trx_commit=2
+innodb_flush_log_at_trx_commit=$flushAtCommit
 innodb_flush_method=unbuffered
 max_connections=150
 table_open_cache=2000
@@ -70,7 +90,7 @@ thread_cache_size=16
 tmp_table_size=64M
 max_heap_table_size=64M
 # Diagnostics/monitoring overhead not needed on a small single-box install - frees RAM.
-performance_schema=OFF
+performance_schema=$performanceSchema
 "@ | Set-Content $iniPath
     }
 
@@ -120,14 +140,16 @@ performance_schema=OFF
 
     Save-DbCredentials -RootPass $DbRootPassword -UserPass $DbUserPassword
 
+    $rootPasswordSql = ConvertTo-MySqlLiteral $DbRootPassword
+    $dbUserPasswordSql = ConvertTo-MySqlLiteral $DbUserPassword
     $sql = @"
-ALTER USER 'root'@'localhost' IDENTIFIED BY '$DbRootPassword';
+ALTER USER 'root'@'localhost' IDENTIFIED BY $rootPasswordSql;
 CREATE DATABASE IF NOT EXISTS $($Script:DbName) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$($Script:DbUser)'@'localhost';
-ALTER USER '$($Script:DbUser)'@'localhost' IDENTIFIED BY '$DbUserPassword';
+ALTER USER '$($Script:DbUser)'@'localhost' IDENTIFIED BY $dbUserPasswordSql;
 GRANT ALL PRIVILEGES ON $($Script:DbName).* TO '$($Script:DbUser)'@'localhost';
 FLUSH PRIVILEGES;
 "@
-    $sql | & $mysqlExe @rootAuthArgs 2>$null
+    $sql | & $mysqlExe @rootAuthArgs 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Local MySQL database/user provisioning failed with exit code $LASTEXITCODE." }
 }
-

@@ -81,6 +81,7 @@ param(
     [string]$DbHost = '127.0.0.1',
     [string]$ExternalDbAdminUser = 'root',
     [string]$ExternalDbAdminPassword = $null,
+    [string]$ExternalDbUserHost = $null,
 
     # HTTPS (Prod): when both cert files are given, Apache serves over 443 with them instead of
     # (or alongside) plain HTTP, and $wgServer is set to PublicUrl. PEM format for both files -
@@ -280,4 +281,3 @@ switch ($Action) {
     'Restart' { $KeepData = $true; Invoke-Down; Invoke-Up }
     'Backup'  { Invoke-Backup }
 }
-

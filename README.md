@@ -38,6 +38,9 @@ testing (see below) — it never runs as part of `Up`/`Down`.
   an existing MySQL instance with `-UseExternalDb`
 - **Python** (official embeddable zip, no installer/PATH change) purely so
   SyntaxHighlight_GeSHi's bundled Pygments zipapp has an interpreter to run
+- **PdfHandler** requires Ghostscript, ImageMagick, and Poppler (`pdfinfo` and
+  `pdftotext`) already installed on `PATH`; provisioning stops with a clear
+  error if they are missing
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
 - The curated development/documentation extension set is defined above
@@ -179,7 +182,10 @@ real certificate, use the companion script:
 points the wiki at an existing MySQL instance instead of installing one —
 requires a `mysql` client on `PATH`. `Down` never touches it at all (no
 stop, no database/user drop) - the wiki's database/user are left in place
-for you to remove manually if you want them gone.
+for you to remove manually if you want them gone. For a remote production
+database, also set `-ExternalDbUserHost` to the wiki server's exact MySQL
+account host; omitting it is rejected to avoid granting the wiki user access
+from every host.
 
 ### Entra ID (Azure AD) SSO
 
@@ -235,6 +241,7 @@ needs the DB password to run `mysqldump` unattended.
 | `-Force` | | Override pre-existing-service checks (both kinds above) |
 | `-NonInteractive` | | Skip both the wizard and pre-existing-service prompts |
 | `-KeepData` | | On `Down`, stop services without deleting anything |
+| `-ExternalDbUserHost` | | Exact MySQL account host for a remote external DB in Prod |
 
 Vendor download URLs (Apache Lounge, PHP, APCu, MySQL, Python, Composer, the
 CA bundle) are pinned to specific versions via `-ApacheZipUrl`/`-PhpZipUrl`/
