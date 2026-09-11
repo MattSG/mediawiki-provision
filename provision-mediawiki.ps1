@@ -147,7 +147,8 @@ param(
     [string]$CaBundleUrl     = 'https://curl.se/ca/cacert.pem',
     [string]$GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe',
     [string]$ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip',
-    [string]$PopplerZipUrl = 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip',
+    [string]$PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip',
+    [string]$PopplerZipUrl = $null,
 
     # Corporate proxy for every download this script makes (Apache/PHP/MySQL/Python zips, GitHub
     # extension/skin archives, composer.phar, the CA bundle). Omit for direct internet access.

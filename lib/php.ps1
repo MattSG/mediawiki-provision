@@ -49,13 +49,17 @@ function Set-PhpIni {
     $extDir = Join-Path $Script:PhpDir 'ext'
 
     function Set-IniValue {
-        param([string]$Content, [string]$Key, [string]$Value)
-        # Matched on key+value together (not key alone) - several calls share the same key
-        # (e.g. "extension" for mysqli/intl/apcu/...) and must coexist as separate lines rather
-        # than each replacing the previous module's line.
+        param([string]$Content, [string]$Key, [string]$Value, [switch]$AllowMultiple)
         $line = "$Key = $Value"
-        $pattern = "(?m)^\s*$([regex]::Escape($line))\s*$"
-        if ($Content -match $pattern) { return $Content }
+        if ($AllowMultiple) {
+            $pattern = "(?m)^\s*$([regex]::Escape($line))\s*$"
+            if ($Content -match $pattern) { return $Content }
+        } else {
+            $pattern = "(?m)^\s*$([regex]::Escape($Key))\s*=.*$"
+            if ($Content -match $pattern) {
+                return [regex]::Replace($Content, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $line })
+            }
+        }
         return $Content + "`r`n$line`r`n"
     }
 
@@ -66,15 +70,15 @@ function Set-PhpIni {
         $ini = Set-IniValue $ini 'openssl.cafile' "`"$caPath`""
     }
     foreach ($ext in @('openssl', 'mysqli', 'intl', 'mbstring', 'curl', 'gd', 'xml', 'fileinfo')) {
-        if (Test-Path (Join-Path $extDir "php_$ext.dll")) { $ini = Set-IniValue $ini 'extension' $ext }
+        if (Test-Path (Join-Path $extDir "php_$ext.dll")) { $ini = Set-IniValue $ini 'extension' $ext -AllowMultiple }
     }
     # opcache is a Zend Extension, not an ordinary extension - loading it via "extension=" fails
     # with "Invalid library (appears to be a Zend Extension...)".
     if (Test-Path (Join-Path $extDir 'php_opcache.dll')) { $ini = Set-IniValue $ini 'zend_extension' 'opcache' }
     $Script:ApcuAvailable = Test-Path (Join-Path $extDir 'php_apcu.dll')
     if ($Script:ApcuAvailable) {
-        $ini = Set-IniValue $ini 'extension' 'apcu'
-        $ini += "`r`napc.enable_cli = 0`r`n"
+        $ini = Set-IniValue $ini 'extension' 'apcu' -AllowMultiple
+        $ini = Set-IniValue $ini 'apc.enable_cli' '0'
         # Default (32M) is too small once APCu is also MediaWiki's main/session/message/parser
         # cache backend (see $wgMainCacheType etc.) on top of ordinary opcode caching.
         $ini = Set-IniValue $ini 'apc.shm_size' '128M'
@@ -97,9 +101,10 @@ function Set-PhpIni {
     $ini = Set-IniValue $ini 'post_max_size' '64M'
     $ini = Set-IniValue $ini 'memory_limit' '256M'
     $ini = Set-IniValue $ini 'max_execution_time' '120'
+    $ini = Set-IniValue $ini 'max_input_time' '120'
+    $ini = Set-IniValue $ini 'max_file_uploads' '50'
     $ini = Set-IniValue $ini 'date.timezone' 'UTC'
 
     Set-Content -Path $iniPath -Value $ini -Encoding UTF8
     Write-Note "php.ini: $iniPath (APCu: $(if ($Script:ApcuAvailable) { 'enabled' } else { 'unavailable, using CACHE_DB fallback' }))"
 }
-

@@ -25,7 +25,7 @@ function Get-PdfToolPaths {
 }
 
 function Install-PdfTools {
-    Write-Step 'Installing PdfHandler prerequisites (Ghostscript, ImageMagick, Poppler)...'
+    Write-Step 'Installing PdfHandler prerequisites (Ghostscript, ImageMagick, PDF metadata tools)...'
     $ghostDir = Join-Path $Script:PdfToolsDir 'ghostscript'
     $imageDir = Join-Path $Script:PdfToolsDir 'imagemagick'
     $popplerDir = Join-Path $Script:PdfToolsDir 'poppler'
@@ -45,8 +45,9 @@ function Install-PdfTools {
         Expand-ToDir -ZipPath $archive -TargetDir $imageDir
     }
     if (-not $paths.PdfInfo -or -not $paths.PdfToText) {
-        $archive = Join-Path $Script:DownloadDir (Split-Path $PopplerZipUrl -Leaf)
-        Get-RemoteFile -Url $PopplerZipUrl -Destination $archive -VendorPageOnFailure 'https://github.com/oschwartz10612/poppler-windows/releases'
+        $metadataUrl = if ($PopplerZipUrl) { $PopplerZipUrl } else { $PdfMetadataToolsZipUrl }
+        $archive = Join-Path $Script:DownloadDir (Split-Path $metadataUrl -Leaf)
+        Get-RemoteFile -Url $metadataUrl -Destination $archive -VendorPageOnFailure 'https://www.xpdfreader.com/download.html'
         Expand-ToDir -ZipPath $archive -TargetDir $popplerDir
     }
 
@@ -58,5 +59,5 @@ function Install-PdfTools {
         if (-not $paths.PdfToText) { 'Poppler pdftotext' }
     )
     if ($missing) { throw "PdfHandler prerequisites were not found after installation: $($missing -join ', ')." }
-    Write-Note "PdfHandler tools ready under $Script:PdfToolsDir."
+    Write-Note "PdfHandler tools ready under $Script:PdfToolsDir (Xpdf metadata tools by default)."
 }

@@ -98,16 +98,18 @@ performance_schema=$performanceSchema
     if (-not (Test-Path $dataDir)) {
         Write-Step 'Initializing MySQL data directory...'
         & $mysqldExe --defaults-file=$iniPath --initialize-insecure --datadir=$dataDir 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "MySQL data directory initialization failed with exit code $LASTEXITCODE." }
     }
 
     if (-not (Get-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue)) {
         Write-Step "Registering MySQL Windows service '$($Script:MysqlServiceName)'..."
         & $mysqldExe --install $Script:MysqlServiceName --defaults-file=$iniPath | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "MySQL service installation failed with exit code $LASTEXITCODE." }
         $State.mysqlServiceCreated = $true
         Save-State $State
     }
     Set-Service -Name $Script:MysqlServiceName -StartupType Automatic
-    Start-Service -Name $Script:MysqlServiceName -ErrorAction SilentlyContinue
+    Start-Service -Name $Script:MysqlServiceName -ErrorAction Stop
 
     $mysqlExe = Join-Path $Script:MysqlDir 'bin\mysql.exe'
     Write-Note 'Waiting for MySQL to accept connections...'

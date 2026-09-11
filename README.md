@@ -39,11 +39,14 @@ testing (see below) — it never runs as part of `Up`/`Down`.
   an existing MySQL instance with `-UseExternalDb`
 - **Python** (official embeddable zip, no installer/PATH change) purely so
   SyntaxHighlight_GeSHi's bundled Pygments zipapp has an interpreter to run
-- **PdfHandler** requires Ghostscript, ImageMagick, and Poppler (`pdfinfo` and
-  `pdftotext`). Pass `-InstallPdfTools` (or set `InstallPdfTools = $true` in
+- **PdfHandler** requires Ghostscript, ImageMagick, and PDF metadata tools
+  (`pdfinfo` and `pdftotext`). Pass `-InstallPdfTools` (or set `InstallPdfTools = $true` in
   the config file) to install pinned Windows builds under `pdf-tools\`; the
   generated PdfHandler settings use absolute paths, so no machine-wide `PATH`
-  change is required. The PDF URL parameters also accept local mirrors.
+  change is required. The default metadata package is the official Xpdf
+  Windows command-line bundle; the PDF URL parameters also accept local mirrors.
+- Generated `LocalSettings.php` is written inside one deterministic managed
+  block and passed through `php -l`; reruns replace only that block.
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
 - The curated development/documentation extension set is defined above
@@ -245,7 +248,7 @@ needs the DB password to run `mysqldump` unattended.
 | `-NonInteractive` | | Skip both the wizard and pre-existing-service prompts |
 | `-KeepData` | | On `Down`, stop services without deleting anything |
 | `-ExternalDbUserHost` | | Exact MySQL account host for a remote external DB in Prod |
-| `-InstallPdfTools` | off | Install Ghostscript, ImageMagick, and Poppler for PdfHandler under `InstallRoot` |
+| `-InstallPdfTools` | off | Install Ghostscript, ImageMagick, and PDF metadata tools for PdfHandler under `InstallRoot` |
 
 Vendor download URLs (Apache Lounge, PHP, APCu, MySQL, Python, Composer, the
 CA bundle, and PdfHandler tools) are pinned to specific versions via their URL

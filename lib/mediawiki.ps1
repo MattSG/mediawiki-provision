@@ -219,6 +219,21 @@ function Add-ManagedSettingsBlock {
     Set-Content -Path $path -Value $content -Encoding UTF8
 }
 
+function ConvertTo-PhpPath {
+    param([string]$Path)
+    return ($Path -replace '\\', '/')
+}
+
+function Test-LocalSettingsSyntax {
+    $phpExe = Join-Path $Script:PhpDir 'php.exe'
+    $settings = Join-Path $Script:WwwDir 'LocalSettings.php'
+    & $phpExe -l $settings 2>&1 | Tee-Object -Variable output | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Add-Content $Script:LogFile $output
+        throw "Generated LocalSettings.php failed PHP syntax validation. See $Script:LogFile."
+    }
+}
+
 # STEP 9: file-upload directories/permissions, then caching/perf settings + the wfLoadSkin/
 # wfLoadExtension block, written into LocalSettings.php's managed block (see Add-ManagedSettingsBlock).
 function Set-UploadsAndPermissions {
@@ -298,11 +313,17 @@ $logoLine
 
 // --- File uploads (images dir created + permissioned by the provisioning script) ---
 `$wgEnableUploads     = true;
-`$wgUseImageMagick    = false; // GD (already enabled in php.ini) handles thumbnailing - no extra binary needed
+`$wgUseImageMagick    = $(if (Test-Path (Join-Path $Script:WwwDir 'extensions\PdfHandler')) { 'true' } else { 'false' });
 `$wgUploadDirectory   = "`$IP/images";
 `$wgUploadPath        = "`$wgScriptPath/images";
 `$wgFileExtensions    = array_merge( `$wgFileExtensions, [ 'png', 'jpg', 'jpeg', 'gif', 'svg', 'pdf', 'webp' ] );
 `$wgMaxUploadSize      = 64 * 1024 * 1024; // matches php.ini upload_max_filesize/post_max_size
+// MediaWiki shell limits are KiB (not bytes); these cap PDF helper processes at 512 MiB,
+// 64 MiB output, and three minutes of CPU/wall-clock time.
+`$wgMaxShellMemory    = 512 * 1024;
+`$wgMaxShellFileSize  = 64 * 1024;
+`$wgMaxShellTime      = 180;
+`$wgMaxShellWallClockTime = 180;
 
 // --- Skins ---
 "@
@@ -323,6 +344,8 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
     }
     if (Test-Path (Join-Path $Script:WwwDir 'extensions\SemanticMediaWiki')) {
         $block += "`nwfLoadExtension( 'SemanticMediaWiki' );"
+        $semanticDomain = if ($Script:UseHttps) { ([Uri]$PublicUrl).Host } else { 'localhost' }
+        $block += "`nenableSemantics( '$semanticDomain' );"
     }
     foreach ($ext in @('SemanticResultFormats', 'SemanticBreadcrumbLinks', 'Mermaid')) {
         if ((Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) -and ($block -notmatch "wfLoadExtension\( '$ext' \)")) {
@@ -338,7 +361,7 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
             if (-not $pdf.PdfToText) { 'Poppler pdftotext' }
         )
         if ($pdfTools) { throw "PdfHandler requires: $($pdfTools -join ', '). Use -InstallPdfTools or install them on PATH before provisioning." }
-        $block += "`n`n// --- PdfHandler executables ---`n`$wgPdfProcessor = '$($pdf.Ghostscript -replace '\\', '/')';`n`$wgPdfPostProcessor = '$($pdf.ImageMagick -replace '\\', '/')';`n`$wgPdfInfo = '$($pdf.PdfInfo -replace '\\', '/')';`n`$wgPdftoText = '$($pdf.PdfToText -replace '\\', '/')';"
+        $block += "`n`n// --- PdfHandler executables ---`n`$wgPdfProcessor = '$(ConvertTo-PhpPath $pdf.Ghostscript)';`n`$wgPdfPostProcessor = '$(ConvertTo-PhpPath $pdf.ImageMagick)';`n`$wgPdfInfo = '$(ConvertTo-PhpPath $pdf.PdfInfo)';`n`$wgPdftoText = '$(ConvertTo-PhpPath $pdf.PdfToText)';"
     }
     $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
     $pythonExe = Join-Path $Script:PythonDir 'python.exe'
@@ -397,6 +420,7 @@ $($Script:MarkerEnd)
 "@
     }
     Add-ManagedSettingsBlock -Block $block
+    Test-LocalSettingsSyntax
 }
 
 # STEP 10: update.php (applies core + every installed extension's schema changes) - the last

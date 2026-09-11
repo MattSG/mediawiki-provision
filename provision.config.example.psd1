@@ -66,5 +66,7 @@
     CaBundleUrl = 'https://curl.se/ca/cacert.pem'
     GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe'
     ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip'
-    PopplerZipUrl = 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip'
+    PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip'
+    # Legacy override name; use this only when an approved Poppler Windows mirror is required.
+    PopplerZipUrl = $null
 }
