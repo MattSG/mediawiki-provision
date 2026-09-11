@@ -256,6 +256,11 @@ function ConvertTo-PhpPath {
     return ($Path -replace '\\', '/')
 }
 
+function ConvertTo-PhpString {
+    param([AllowEmptyString()][string]$Value)
+    return ($Value -replace '\\', '\\\\' -replace "'", "\\'")
+}
+
 function Test-LocalSettingsSyntax {
     $phpExe = Join-Path $Script:PhpDir 'php.exe'
     $settings = Join-Path $Script:WwwDir 'LocalSettings.php'
@@ -342,6 +347,21 @@ $debugLine
 `$wgShowDBErrorBacktrace = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
 `$wgDevelopmentWarnings  = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
 $logoLine
+
+$(if ($MailRelay) {
+    $mailHost = ConvertTo-PhpString $MailRelay
+    $mailUser = ConvertTo-PhpString $MailUsername
+    $mailPass = if ($MailPassword) { ConvertTo-PhpString (ConvertFrom-SecureString $MailPassword -AsPlainText) } else { '' }
+    @"
+// --- Outbound email ---
+`$wgEnableEmail = true;
+`$wgEnableUserEmail = true;
+`$wgSMTP = [
+    'host' => '$mailHost',
+    'port' => $MailPort$(if ($MailUsername) { ",`r`n    'auth' => true,`r`n    'username' => '$mailUser',`r`n    'password' => '$mailPass'" } else { ",`r`n    'auth' => false" })
+];
+"@
+})
 
 // --- File uploads (images dir created + permissioned by the provisioning script) ---
 `$wgEnableUploads     = true;

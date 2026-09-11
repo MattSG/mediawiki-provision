@@ -5,6 +5,11 @@
     SiteName = 'DevelopmentWiki'
     WikiAdminUser = 'Admin'
     WikiAdminPassword = $null
+    MailRelay = $null
+    MailPort = 587
+    MailUsername = $null
+    # MailPassword may be an encrypted ConvertFrom-SecureString value.
+    MailPassword = $null
     HttpPort = 8080
     Environment = 'Dev'
     KeepData = $false
@@ -71,4 +76,6 @@
     PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip'
     # Legacy override name; use this only when an approved Poppler Windows mirror is required.
     PopplerZipUrl = $null
+    # Optional SHA-256 pinning, keyed by the exact configured URL.
+    DownloadChecksums = @{}
 }

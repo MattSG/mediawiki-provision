@@ -70,6 +70,16 @@ function Invoke-SetupWizard {
         $resp = Read-Host "Wiki name/title [$SiteName]"
         if ($resp) { $Script:SiteName = $resp }
     }
+    if (-not $PSBoundParameters.ContainsKey('MailRelay')) {
+        $resp = Read-Host 'SMTP relay hostname (optional, Enter to leave email disabled)'
+        if ($resp) {
+            $Script:MailRelay = $resp
+            $resp = Read-Host "SMTP relay port [$MailPort]"
+            if ($resp -match '^\d+$') { $Script:MailPort = [int]$resp }
+            $resp = Read-Host 'SMTP username (optional)'
+            if ($resp) { $Script:MailUsername = $resp; $Script:MailPassword = Read-Host 'SMTP password' -AsSecureString }
+        }
+    }
     if (-not $PSBoundParameters.ContainsKey('WikiAdminUser')) {
         $resp = Read-Host "Admin username [$WikiAdminUser]"
         if ($resp) { $Script:WikiAdminUser = $resp }
@@ -148,6 +158,7 @@ function Show-SetupSummary {
     Write-Host "  Environment:   $Environment"
     Write-Host "  URL:           $(if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort/" })"
     Write-Host "  Database:      $(if ($UseExternalDb) { "external ($DbHost`:$DbPort)" } else { 'local MySQL (this script installs it)' })"
+    Write-Host "  Mail relay:    $(if ($MailRelay) { "$MailRelay`:$MailPort" } else { 'disabled' })"
     Write-Host "  Entra SSO:     $(if ($EnableEntraSso) { 'enabled' } else { 'disabled' })"
     Write-Host "  Job runner:    $(if ($EnableJobRunner) { 'enabled' } else { 'disabled' })"
     Write-Host "  Log rotation:  $(if ($EnableLogRotation) { 'enabled' } else { 'disabled' })"

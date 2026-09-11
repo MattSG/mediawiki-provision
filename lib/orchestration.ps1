@@ -17,7 +17,11 @@ function Invoke-Up {
     $state = Get-State
     if (-not $rootPreexisted -and -not $state.rootCreated) { $state.rootCreated = $true; Save-State $state }
 
-    $Script:WikiAdminPassword = if ($WikiAdminPassword) { $WikiAdminPassword } else { New-RandomPassword }
+    $localSettingsExists = Test-Path (Join-Path $Script:WwwDir 'LocalSettings.php')
+    if ($WikiAdminPassword -and $localSettingsExists) {
+        Write-Warn 'WikiAdminPassword was supplied, but the existing wiki was not reinstalled; keeping the current admin password.'
+    }
+    $Script:WikiAdminPassword = if (-not $localSettingsExists -and $WikiAdminPassword) { $WikiAdminPassword } elseif (-not $localSettingsExists) { New-RandomPassword } else { Get-SavedPassword 'Wiki admin pass' }
 
     if (Confirm-Step 'Install/verify Apache + mod_fcgid binaries.') { Install-ApacheBinaries }
     if (Confirm-Step 'Install/verify PHP.') { Install-Php }
@@ -80,7 +84,7 @@ function Invoke-Up {
         "Generated $(Get-Date -Format o)",
         "Wiki URL:        $wikiUrl",
         "Wiki admin user: $WikiAdminUser",
-        "Wiki admin pass: $($Script:WikiAdminPassword)"
+        $(if ($Script:WikiAdminPassword) { "Wiki admin pass: $($Script:WikiAdminPassword)" } else { 'Wiki admin pass: unchanged (existing LocalSettings.php)' })
     )
     if ($Script:DbRootPassword) { $lines += "DB root pass:    $($Script:DbRootPassword)" }
     $lines += "DB user pass:    $($Script:DbUserPassword)"

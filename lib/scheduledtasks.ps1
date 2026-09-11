@@ -73,6 +73,11 @@ function Invoke-WikiBackup {
     if ($mysqldumpExe -and (Test-Path $mysqldumpExe) -and $dbPass) {
         $dumpFile = Join-Path $BackupPath "db-$stamp.sql"
         & $mysqldumpExe -h $DbHost -P $DbPort -u $dbUser "-p$dbPass" $Script:DbName 2>$null | Set-Content -Path $dumpFile -Encoding UTF8
+        $dumpExit = $LASTEXITCODE
+        if ($dumpExit -ne 0 -or -not (Test-Path $dumpFile) -or (Get-Item $dumpFile).Length -eq 0) {
+            Remove-Item $dumpFile -Force -ErrorAction SilentlyContinue
+            throw "Database backup failed (mysqldump exit code $dumpExit)."
+        }
         Write-Note "Database dump: $dumpFile"
     } else {
         Write-Warn 'Could not locate mysqldump/DB credentials - skipping database dump this run.'

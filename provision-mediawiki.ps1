@@ -67,6 +67,10 @@ param(
     [string]$SiteName = 'MyWiki',
     [string]$WikiAdminUser = 'Admin',
     [string]$WikiAdminPassword = $null,
+    [string]$MailRelay = $null,
+    [ValidateRange(1, 65535)][int]$MailPort = 587,
+    [string]$MailUsername = $null,
+    [securestring]$MailPassword = $null,
     [string]$DbRootPassword = $null,
     [string]$DbUserPassword = $null,
     [int]$HttpPort = 8080,
@@ -150,6 +154,7 @@ param(
     [string]$ImageMagickZipUrl = $null,
     [string]$PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip',
     [string]$PopplerZipUrl = $null,
+    [hashtable]$DownloadChecksums = @{},
 
     # Corporate proxy for every download this script makes (Apache/PHP/MySQL/Python zips, GitHub
     # extension/skin archives, composer.phar, the CA bundle). Omit for direct internet access.
@@ -187,6 +192,8 @@ function Import-ProvisionConfig {
 
         $value = $config[$key]
         if ($key -eq 'EntraClientSecret' -and $value -is [string] -and $value) {
+            $value = ConvertTo-SecureString -String $value
+        } elseif ($key -in @('EntraClientSecret', 'MailPassword') -and $value -is [string] -and $value) {
             $value = ConvertTo-SecureString -String $value
         } elseif ($key -eq 'ProxyCredential' -and $value -is [hashtable]) {
             if (-not $value.UserName -or -not $value.Password) { throw "ProxyCredential requires UserName and Password in $configFile" }
@@ -280,6 +287,20 @@ $Script:LibDir = Join-Path $PSScriptRoot 'lib'
 foreach ($module in @('common', 'wizard', 'sso', 'scheduledtasks', 'apache', 'php', 'mysql', 'python', 'pdf', 'mediawiki', 'orchestration')) {
     . (Join-Path $Script:LibDir "$module.ps1")
 }
+
+function Assert-ProvisionConfig {
+    if ($HttpPort -eq $DbPort) { throw 'HttpPort and DbPort must be different.' }
+    if (($MailUsername -or $MailPassword) -and -not $MailRelay) { throw 'MailRelay is required when SMTP credentials are configured.' }
+    if ($MailRelay -and $MailUsername -and -not $MailPassword) { throw 'MailPassword is required when MailUsername is configured.' }
+    if ($MailPassword -and -not $MailUsername) { throw 'MailUsername is required when MailPassword is configured.' }
+    if ($DownloadChecksums) {
+        foreach ($key in $DownloadChecksums.Keys) {
+            if ([string]$DownloadChecksums[$key] -notmatch '^[0-9A-Fa-f]{64}$') { throw "DownloadChecksums[$key] must be a 64-character SHA-256 hex value." }
+        }
+    }
+}
+
+Assert-ProvisionConfig
 
 switch ($Action) {
     'Up'      { Invoke-Up }
