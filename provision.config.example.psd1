@@ -10,6 +10,7 @@
     KeepData = $false
     Force = $false
     SeedDevelopmentContent = $true
+    InstallPdfTools = $false
 
     # Database: set UseExternalDb = $true to use an existing server.
     DbPort = 3306
@@ -63,4 +64,7 @@
     PythonZipUrl = 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip'
     ComposerPharUrl = 'https://getcomposer.org/composer.phar'
     CaBundleUrl = 'https://curl.se/ca/cacert.pem'
+    GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe'
+    ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip'
+    PopplerZipUrl = 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip'
 }

@@ -25,6 +25,7 @@ function Invoke-Up {
     if (Confirm-Step 'Write Apache config (vhost, mod_fcgid, gzip, cache headers) and (re)start the Apache service.') { Set-ApacheConfig -State $state }
     if (Confirm-Step "Install/start MySQL$(if ($UseExternalDb) { " (skipped - using external DB at $DbHost`:$DbPort)" }).") { Install-MySql -State $state }
     if (Confirm-Step 'Install/verify the embedded Python runtime.') { Install-Python }
+    if ($InstallPdfTools -and (Confirm-Step 'Install/verify PdfHandler tools (Ghostscript, ImageMagick, Poppler).')) { Install-PdfTools }
 
     if (Confirm-Step 'Download/verify MediaWiki core.') { Get-MediaWikiCore }
     if (Confirm-Step 'Install SemanticMediaWiki.') { Install-SemanticMediaWiki }

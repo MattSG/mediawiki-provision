@@ -145,6 +145,9 @@ param(
     [string]$PythonZipUrl    = 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip',
     [string]$ComposerPharUrl = 'https://getcomposer.org/composer.phar',
     [string]$CaBundleUrl     = 'https://curl.se/ca/cacert.pem',
+    [string]$GhostscriptUrl = 'https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/gs10071w64.exe',
+    [string]$ImageMagickZipUrl = 'https://download.imagemagick.org/archive/windows/releases/ImageMagick-7.1.2-31.zip',
+    [string]$PopplerZipUrl = 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.02.0-0/Release-26.02.0-0.zip',
 
     # Corporate proxy for every download this script makes (Apache/PHP/MySQL/Python zips, GitHub
     # extension/skin archives, composer.phar, the CA bundle). Omit for direct internet access.
@@ -155,6 +158,7 @@ param(
     [switch]$Force,
 
     [switch]$SeedDevelopmentContent,
+    [switch]$InstallPdfTools,
 
     [ValidateSet('Dev', 'Prod')]
     [string]$Environment = 'Dev'
@@ -225,6 +229,7 @@ function Set-Layout {
     $Script:PhpDir       = Join-Path $Script:Root 'php'
     $Script:MysqlDir     = Join-Path $Script:Root 'mysql'
     $Script:PythonDir    = Join-Path $Script:Root 'python'
+    $Script:PdfToolsDir  = Join-Path $Script:Root 'pdf-tools'
     $Script:WwwDir       = Join-Path $Script:Root 'www'
     $Script:CacheDir     = Join-Path $Script:Root 'cache'
     $Script:LogsDir      = Join-Path $Script:Root 'logs'
@@ -270,7 +275,7 @@ $Script:ZipSkins = @('Vector')
 # download helpers) must load first - everything else is independent until Invoke-Up runs.
 # ---------------------------------------------------------------------------
 $Script:LibDir = Join-Path $PSScriptRoot 'lib'
-foreach ($module in @('common', 'wizard', 'sso', 'scheduledtasks', 'apache', 'php', 'mysql', 'python', 'mediawiki', 'orchestration')) {
+foreach ($module in @('common', 'wizard', 'sso', 'scheduledtasks', 'apache', 'php', 'mysql', 'python', 'pdf', 'mediawiki', 'orchestration')) {
     . (Join-Path $Script:LibDir "$module.ps1")
 }
 

@@ -330,17 +330,15 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
         }
     }
     if (Test-Path (Join-Path $Script:WwwDir 'extensions\PdfHandler')) {
-        $hasGhostscript = @(Get-Command gs, gswin64c -ErrorAction SilentlyContinue).Count -gt 0
-        $hasImageMagick = @(Get-Command magick, convert -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch '\\System32\\convert\.exe$' }).Count -gt 0
-        $hasPdfInfo = @(Get-Command pdfinfo -ErrorAction SilentlyContinue).Count -gt 0
-        $hasPdfToText = @(Get-Command pdftotext -ErrorAction SilentlyContinue).Count -gt 0
+        $pdf = Get-PdfToolPaths
         $pdfTools = @(
-            if (-not $hasGhostscript) { 'Ghostscript (gs/gswin64c)' }
-            if (-not $hasImageMagick) { 'ImageMagick (magick/convert)' }
-            if (-not $hasPdfInfo) { 'Poppler pdfinfo' }
-            if (-not $hasPdfToText) { 'Poppler pdftotext' }
+            if (-not $pdf.Ghostscript) { 'Ghostscript (gs/gswin64c)' }
+            if (-not $pdf.ImageMagick) { 'ImageMagick (magick/convert)' }
+            if (-not $pdf.PdfInfo) { 'Poppler pdfinfo' }
+            if (-not $pdf.PdfToText) { 'Poppler pdftotext' }
         )
-        if ($pdfTools) { throw "PdfHandler requires: $($pdfTools -join ', '). Install these tools and put them on PATH before provisioning." }
+        if ($pdfTools) { throw "PdfHandler requires: $($pdfTools -join ', '). Use -InstallPdfTools or install them on PATH before provisioning." }
+        $block += "`n`n// --- PdfHandler executables ---`n`$wgPdfProcessor = '$($pdf.Ghostscript -replace '\\', '/')';`n`$wgPdfPostProcessor = '$($pdf.ImageMagick -replace '\\', '/')';`n`$wgPdfInfo = '$($pdf.PdfInfo -replace '\\', '/')';`n`$wgPdftoText = '$($pdf.PdfToText -replace '\\', '/')';"
     }
     $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
     $pythonExe = Join-Path $Script:PythonDir 'python.exe'

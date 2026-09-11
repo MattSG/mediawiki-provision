@@ -20,6 +20,7 @@ actual implementation from `lib/`, one file per concern:
 | `lib/php.ps1` | PHP install + php.ini tuning |
 | `lib/mysql.ps1` | MySQL install, or `-UseExternalDb` connection |
 | `lib/python.ps1` | Python (embeddable) for SyntaxHighlight |
+| `lib/pdf.ps1` | Optional Ghostscript/ImageMagick/Poppler installation for PdfHandler |
 | `lib/mediawiki.ps1` | Core, extensions/skins, installer, caching/perf settings |
 | `lib/scheduledtasks.ps1` | Optional job-runner/log-rotation/backup Task Scheduler tasks |
 | `lib/orchestration.ps1` | `Invoke-Up` / `Invoke-Down` / `Invoke-Status` / `Invoke-Backup` |
@@ -39,8 +40,10 @@ testing (see below) — it never runs as part of `Up`/`Down`.
 - **Python** (official embeddable zip, no installer/PATH change) purely so
   SyntaxHighlight_GeSHi's bundled Pygments zipapp has an interpreter to run
 - **PdfHandler** requires Ghostscript, ImageMagick, and Poppler (`pdfinfo` and
-  `pdftotext`) already installed on `PATH`; provisioning stops with a clear
-  error if they are missing
+  `pdftotext`). Pass `-InstallPdfTools` (or set `InstallPdfTools = $true` in
+  the config file) to install pinned Windows builds under `pdf-tools\`; the
+  generated PdfHandler settings use absolute paths, so no machine-wide `PATH`
+  change is required. The PDF URL parameters also accept local mirrors.
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
 - The curated development/documentation extension set is defined above
@@ -242,10 +245,11 @@ needs the DB password to run `mysqldump` unattended.
 | `-NonInteractive` | | Skip both the wizard and pre-existing-service prompts |
 | `-KeepData` | | On `Down`, stop services without deleting anything |
 | `-ExternalDbUserHost` | | Exact MySQL account host for a remote external DB in Prod |
+| `-InstallPdfTools` | off | Install Ghostscript, ImageMagick, and Poppler for PdfHandler under `InstallRoot` |
 
 Vendor download URLs (Apache Lounge, PHP, APCu, MySQL, Python, Composer, the
-CA bundle) are pinned to specific versions via `-ApacheZipUrl`/`-PhpZipUrl`/
-etc. parameters — override these if a vendor's file has moved.
+CA bundle, and PdfHandler tools) are pinned to specific versions via their URL
+parameters — override these if a vendor's file has moved or use local mirrors.
 
 ### Restricted/offline servers: proxy and local mirrors
 
