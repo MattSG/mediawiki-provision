@@ -106,6 +106,11 @@ function Install-ZipComponents {
         } catch {
             throw "Could not download required component '$name' for branch '$MwBranch': $($_.Exception.Message)"
         }
+        # VisualEditor ships its ve library as a git submodule; GitHub source zips
+        # leave that directory empty, so fetch the matching library explicitly.
+        if ($name -eq 'VisualEditor' -and -not (Test-Path (Join-Path $dir 'lib\ve\src\ve.js'))) {
+            Get-GitHubZip -Owner 'wikimedia' -Repo 'VisualEditor' -Branch $MwBranch -TargetDir (Join-Path $dir 'lib\ve')
+        }
         if (Test-ComposerInstallRequired -Dir $dir) {
             Invoke-Composer -ComposerArgs @('install', '--no-dev') -WorkingDir $dir
             New-Item -ItemType File -Path (Join-Path $dir '.composer-installed') -Force | Out-Null
