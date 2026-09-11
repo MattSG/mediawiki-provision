@@ -219,6 +219,9 @@ $builtInDownloadChecksums = @{
     'mediawiki-extensions-UploadWizard-REL1_43.zip' = '91F7A495473318D2F1C752E0AC4C5680EF59E609FE789ED6D453C0872B0E28A4'
     'mediawiki-extensions-VisualEditor-REL1_43.zip' = 'BF8E088D2552BDE3DE967CC51ECE0EB56B7DEEABD4E2D094E1E7EA3AFEFEEE67'
     'mediawiki-extensions-WikiEditor-REL1_43.zip' = 'A80C74864FD005E894A056FABFBDE3C0B55B4D38F7EF1B6BC256AFB6E73AFA08'
+    'mediawiki-extensions-OOJSPlus-REL1_43.zip' = '17565030952B3B482F2C92202377A9BED3E775961274459EB82992BF295075B0'
+    'mediawiki-extensions-BlueSpiceFoundation-REL1_43.zip' = 'DF367E1FAF85983C1D04B8DA8D78C69BAB175590633DA1992BB11CA841645469'
+    'mediawiki-extensions-BlueSpiceNamespaceManager-REL1_43.zip' = '3BDBC5FE4AB16B8732817F9B317ED8EF16A444F3B067D0EE55AD93EB9C8C9A1D'
 }
 foreach ($name in $builtInDownloadChecksums.Keys) { if (-not $DownloadChecksums.ContainsKey($name)) { $DownloadChecksums[$name] = $builtInDownloadChecksums[$name] } }
 
@@ -314,6 +317,7 @@ $Script:SelfPath          = $PSCommandPath
 # Curated development/documentation extension set. Names here must match the extension
 # directory and wfLoadExtension() name; SyntaxHighlight is the upstream SyntaxHighlight_GeSHi repo.
 $Script:ZipExtensions = @(
+    'OOJSPlus', 'BlueSpiceFoundation', 'BlueSpiceNamespaceManager',
     'VisualEditor', 'WikiEditor', 'CodeMirror', 'TemplateData', 'TemplateStyles',
     'ParserFunctions', 'Cite', 'CategoryTree', 'RevisionSlider', 'Echo',
     'DiscussionTools', 'Linter', 'Scribunto', 'UploadWizard',
