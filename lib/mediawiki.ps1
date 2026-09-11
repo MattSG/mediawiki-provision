@@ -395,9 +395,8 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
 "@
     }
     if (Test-Path (Join-Path $Script:WwwDir 'extensions\SemanticMediaWiki')) {
-        $block += "`nwfLoadExtension( 'SemanticMediaWiki' );"
-        $semanticDomain = if ($Script:UseHttps) { ([Uri]$PublicUrl).Host } else { 'localhost' }
-        $block += "`nenableSemantics( '$semanticDomain' );"
+        $semanticNamespace = if ($Script:UseHttps) { "$($PublicUrl.TrimEnd('/'))/id/" } else { "http://localhost:$HttpPort/id/" }
+        $block += "`n`$smwgNamespace = '$(ConvertTo-PhpPath $semanticNamespace)';`nwfLoadExtension( 'SemanticMediaWiki' );"
     }
     foreach ($ext in @('SemanticResultFormats', 'SemanticBreadcrumbLinks', 'Mermaid')) {
         if ((Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) -and ($block -notmatch "wfLoadExtension\( '$ext' \)")) {
