@@ -219,6 +219,38 @@ function Add-ManagedSettingsBlock {
     Set-Content -Path $path -Value $content -Encoding UTF8
 }
 
+function Normalize-ManagedLocalSettings {
+    $path = Join-Path $Script:WwwDir 'LocalSettings.php'
+    $content = Get-Content $path -Raw
+    $marker = [regex]::Escape($Script:MarkerBegin)
+    $match = [regex]::Match($content, "(?s)\A(.*?)$marker")
+    if (-not $match.Success) { return }
+
+    # Remove only directives owned by this script. Keep installer output and unrelated admin settings.
+    $prefix = $match.Groups[1].Value
+    $ownedKeys = @(
+        'wgMainCacheType', 'wgSessionCacheType', 'wgMessageCacheType', 'wgParserCacheType',
+        'wgCacheDirectory', 'wgUseFileCache', 'wgFileCacheDirectory', 'wgUseGzip',
+        'wgResourceLoaderMaxage', 'wgResourceLoaderStorageEnabled', 'wgJobRunRate', 'wgUseCdn',
+        'wgEnableAPI', 'wgEnableWriteAPI', 'wgDefaultSkin', 'wgServer', 'wgAllowUserCss',
+        'wgAllowUserJs', 'wgShowExceptionDetails', 'wgShowSQLErrors', 'wgShowDBErrorBacktrace',
+        'wgDevelopmentWarnings', 'wgEnableUploads', 'wgUseImageMagick', 'wgUploadDirectory',
+        'wgUploadPath', 'wgFileExtensions', 'wgMaxUploadSize', 'wgMaxShellMemory',
+        'wgMaxShellFileSize', 'wgMaxShellTime', 'wgMaxShellWallClockTime', 'wgPygmentizePath'
+    )
+    foreach ($key in $ownedKeys) {
+        $keyPattern = [regex]::Escape($key)
+        $directivePattern = '(?m)^\s*\$' + $keyPattern + '\s*=.*(?:\r?\n|$)'
+        $prefix = [regex]::Replace($prefix, $directivePattern, '')
+    }
+    foreach ($skin in $Script:ZipSkins) {
+        $skinPattern = [regex]::Escape($skin)
+        $prefix = [regex]::Replace($prefix, "(?mi)^\s*wfLoadSkin\(\s*'$skinPattern'\s*\);\s*(?:\r?\n|$)", '')
+    }
+    $prefix = [regex]::Replace($prefix, '(?:\r?\n){3,}', "`r`n`r`n")
+    Set-Content -Path $path -Value ($prefix + $content.Substring($match.Groups[1].Length)) -Encoding UTF8
+}
+
 function ConvertTo-PhpPath {
     param([string]$Path)
     return ($Path -replace '\\', '/')
@@ -254,7 +286,7 @@ function Set-PerformanceAndCaching {
     New-Item -ItemType Directory -Force -Path $Script:CacheDir | Out-Null
     $debugLine = if ($Environment -eq 'Dev') { '$wgShowExceptionDetails = true;' } else { '$wgShowExceptionDetails = false;' }
     $cacheType = if ($Script:ApcuAvailable) { 'CACHE_ACCEL' } else { 'CACHE_DB' }
-    $cachePath = $Script:CacheDir -replace '\\', '\\\\'
+    $cachePath = ConvertTo-PhpPath $Script:CacheDir
 
     # Logo (optional): copied into www/resources/assets so it's served the same way as core's
     # own bundled assets, referenced via $wgResourceBasePath so it survives $wgScriptPath changes.
@@ -372,7 +404,7 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
         $wrapperPath = Join-Path $Script:PythonDir 'pygmentize.bat'
         $pygmentizePath = Join-Path $syntaxHighlightDir 'pygments\pygmentize'
         "@echo off`r`n`"$pythonExe`" `"$pygmentizePath`" %*" | Set-Content -Path $wrapperPath -Encoding ASCII
-        $block += "`n`$wgPygmentizePath = '$wrapperPath';"
+        $block += "`n`n// --- SyntaxHighlight ---`n`$wgPygmentizePath = '$(ConvertTo-PhpPath $wrapperPath)';"
     }
 
     $sso = Get-SsoConfig
@@ -384,6 +416,7 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
         # permissions (granted by default) - see docs comment at the top of lib/sso.ps1.
         $block += @"
 
+// --- Entra ID SSO ---
 wfLoadExtension( 'PluggableAuth' );
 wfLoadExtension( 'OpenIDConnect' );
 // Named (not numeric-push) key - PluggableAuth uses this key as the login button's label, so
@@ -420,6 +453,7 @@ $($Script:MarkerEnd)
 "@
     }
     Add-ManagedSettingsBlock -Block $block
+    Normalize-ManagedLocalSettings
     Test-LocalSettingsSyntax
 }
 
