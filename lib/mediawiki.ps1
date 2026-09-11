@@ -412,7 +412,8 @@ wfLoadExtension( 'Parsoid', "`$IP/vendor/wikimedia/parsoid/extension.json" );
             if (-not $pdf.PdfToText) { 'Poppler pdftotext' }
         )
         if ($pdfTools) { throw "PdfHandler requires: $($pdfTools -join ', '). Use -InstallPdfTools or install them on PATH before provisioning." }
-        $block += "`n`n// --- PdfHandler executables ---`n`$wgPdfProcessor = '$(ConvertTo-PhpPath $pdf.Ghostscript)';`n`$wgPdfPostProcessor = '$(ConvertTo-PhpPath $pdf.ImageMagick)';`n`$wgPdfInfo = '$(ConvertTo-PhpPath $pdf.PdfInfo)';`n`$wgPdftoText = '$(ConvertTo-PhpPath $pdf.PdfToText)';"
+        $imageMagickDir = ConvertTo-PhpPath (Split-Path -Parent $pdf.ImageMagick)
+        $block += "`n`n// --- PdfHandler executables ---`n`$wgPdfProcessor = '$(ConvertTo-PhpPath $pdf.Ghostscript)';`n`$wgPdfPostProcessor = '$(ConvertTo-PhpPath $pdf.ImageMagick)';`n`$wgPdfInfo = '$(ConvertTo-PhpPath $pdf.PdfInfo)';`n`$wgPdftoText = '$(ConvertTo-PhpPath $pdf.PdfToText)';`n`$wgSVGConverterPath = '$imageMagickDir';`n`$wgSVGConverters['ImageMagick'] = '`$path/magick -background \"#ffffff00\" -thumbnail `$width`x`$height\\! `$input PNG:`$output';"
     }
     $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
     $pythonExe = Join-Path $Script:PythonDir 'python.exe'
