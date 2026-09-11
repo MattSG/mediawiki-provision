@@ -10,6 +10,7 @@
     MailUsername = $null
     # MailPassword may be an encrypted ConvertFrom-SecureString value.
     MailPassword = $null
+    MailPasswordText = $null
     MailFrom = $null
     BackupAlertRecipients = @()
     HttpPort = 8080
@@ -80,4 +81,5 @@
     PopplerZipUrl = $null
     # Optional SHA-256 pinning, keyed by the exact configured URL.
     DownloadChecksums = @{}
+    AllowUnverifiedDownloads = $false
 }

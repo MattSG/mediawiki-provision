@@ -186,9 +186,11 @@ function Test-PreexistingInfrastructure {
 
 function Get-RemoteFile {
     param([string]$Url, [string]$Destination, [string]$VendorPageOnFailure)
+    $expected = $DownloadChecksums[$Url]
+    if (-not $expected) { $expected = $DownloadChecksums[(Split-Path $Destination -Leaf)] }
     if (Test-Path $Destination) {
-        $expected = $DownloadChecksums[$Url]
-        if (-not $expected) { Write-Note "Already downloaded: $(Split-Path $Destination -Leaf)"; return }
+        if (-not $expected -and -not $AllowUnverifiedDownloads) { throw "No SHA-256 checksum configured for $Url. Add it to DownloadChecksums or explicitly use -AllowUnverifiedDownloads." }
+        if (-not $expected) { Write-Warn "Using unverified cached download: $(Split-Path $Destination -Leaf)"; return }
         $actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
         if ($actual -eq ([string]$expected).ToUpperInvariant()) { Write-Note "Already downloaded and verified: $(Split-Path $Destination -Leaf)"; return }
         Remove-Item $Destination -Force
@@ -220,7 +222,7 @@ function Get-RemoteFile {
         }
     }
 
-    $expected = $DownloadChecksums[$Url]
+    if (-not $expected -and -not $AllowUnverifiedDownloads) { throw "No SHA-256 checksum configured for $Url. Add it to DownloadChecksums or explicitly use -AllowUnverifiedDownloads." }
     if ($expected) {
         $actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
         if ($actual -ne ([string]$expected).ToUpperInvariant()) {

@@ -65,19 +65,27 @@ function Send-BackupFailureAlert {
     if (-not $MailRelay) { Write-Warn 'Backup failed, but no MailRelay is configured for alert delivery.'; return }
     try {
         $from = if ($MailFrom) { $MailFrom } elseif ($MailUsername) { $MailUsername } else { "mediawiki@$env:COMPUTERNAME" }
-        $mailArgs = @{
-            To = $recipients
-            From = $from
-            Subject = "MediaWiki backup failed on $env:COMPUTERNAME"
-            Body = "The MediaWiki backup failed at $(Get-Date -Format o).`r`n`r`n$ErrorMessage"
-            SmtpServer = $MailRelay
-            Port = $MailPort
-        }
-        if ($MailUsername -and $MailPassword) {
-            $mailArgs.Credential = [pscredential]::new($MailUsername, $MailPassword)
-            $mailArgs.UseSsl = ($MailPort -eq 465 -or $MailPort -eq 587)
-        }
-        Send-MailMessage @mailArgs -ErrorAction Stop
+        $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
+        if (-not $curl) { throw 'curl.exe is required for SMTP backup alerts.' }
+        $messagePath = Join-Path $Script:ProvDir 'backup-alert.eml'
+        @(
+            "From: $from"
+            "To: $($recipients -join ', ')"
+            "Subject: MediaWiki backup failed on $env:COMPUTERNAME"
+            'Content-Type: text/plain; charset=utf-8'
+            ''
+            "The MediaWiki backup failed at $(Get-Date -Format o)."
+            ''
+            $ErrorMessage
+        ) | Set-Content -Path $messagePath -Encoding UTF8
+        $scheme = if ($MailPort -eq 465) { 'smtps' } else { 'smtp' }
+        $curlArgs = @('--silent', '--show-error', '--fail', '--url', "${scheme}://$MailRelay`:$MailPort", '--mail-from', $from)
+        foreach ($recipient in $recipients) { $curlArgs += @('--mail-rcpt', $recipient) }
+        if ($MailPort -ne 465) { $curlArgs += '--ssl-reqd' }
+        if ($MailUsername -and $MailPassword) { $curlArgs += @('--user', "$MailUsername`:$([Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($MailPassword)))") }
+        $curlArgs += @('--upload-file', $messagePath)
+        & $curl @curlArgs 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "curl.exe SMTP delivery failed with exit code $LASTEXITCODE." }
         Write-Note "Backup failure alert sent to $($recipients -join ', ')."
     } catch {
         Write-Warn "Backup failure alert could not be sent: $($_.Exception.Message)"
@@ -110,11 +118,11 @@ function Invoke-WikiBackupCore {
     }
 
     $filesZip = Join-Path $BackupPath "files-$stamp.zip"
-    $toArchive = @(Join-Path $Script:WwwDir 'LocalSettings.php') + @(Join-Path $Script:WwwDir 'images') | Where-Object { Test-Path $_ }
-    if ($toArchive) {
-        Compress-Archive -Path $toArchive -DestinationPath $filesZip -Force
-        Write-Note "Files archive: $filesZip"
-    }
+    if (-not (Test-Path $Script:WwwDir)) { throw "Wiki directory not found: $Script:WwwDir" }
+    $wikiEntries = @(Get-ChildItem -LiteralPath $Script:WwwDir -Force | Select-Object -ExpandProperty FullName)
+    Compress-Archive -Path $wikiEntries -DestinationPath $filesZip -Force
+    if (-not (Test-Path $filesZip) -or (Get-Item $filesZip).Length -eq 0) { throw 'Wiki directory archive was empty.' }
+    Write-Note "Wiki directory archive: $filesZip"
 
     Get-ChildItem $BackupPath -ErrorAction SilentlyContinue | Where-Object LastWriteTime -lt (Get-Date).AddDays(-$BackupRetentionDays) | Remove-Item -Force
     icacls $BackupPath /inheritance:r /grant:r "$($env:USERNAME):F" "SYSTEM:F" | Out-Null
@@ -130,15 +138,17 @@ function Invoke-WikiBackup {
 
 function Register-BackupTask {
     if (Get-ScheduledTask -TaskName 'Backup' -TaskPath $Script:TaskFolder -ErrorAction SilentlyContinue) {
-        Write-Note 'Backup scheduled task already registered.'; return
+        Write-Note 'Updating backup scheduled task.'
+        Unregister-ScheduledTask -TaskName 'Backup' -TaskPath $Script:TaskFolder -Confirm:$false
     }
     Write-Step "Registering scheduled daily backup task ($BackupRetentionDays days retention)..."
-    $extraArgs = if ($UseExternalDb) { " -UseExternalDb -DbHost `"$DbHost`" -DbPort $DbPort -ExternalDbAdminUser `"$ExternalDbAdminUser`"" } else { '' }
+    $extraArgs = if ($UseExternalDb) { " -UseExternalDb -DbHost `"$DbHost`" -DbPort $DbPort -ExternalDbAdminUser `"$ExternalDbAdminUser`" -ExternalDbAdminPassword `"$ExternalDbAdminPassword`"" } else { '' }
     if ($MailRelay -and $BackupAlertRecipients) {
         $recipients = $BackupAlertRecipients -join ','
         $extraArgs += " -MailRelay `"$MailRelay`" -MailPort $MailPort -BackupAlertRecipients `"$recipients`""
         if ($MailUsername) { $extraArgs += " -MailUsername `"$MailUsername`"" }
         if ($MailFrom) { $extraArgs += " -MailFrom `"$MailFrom`"" }
+        if ($MailPassword) { $extraArgs += " -MailPasswordText `"$(ConvertFrom-SecureString $MailPassword -AsPlainText)`"" }
     }
     $argument = "-NoProfile -ExecutionPolicy Bypass -File `"$Script:SelfPath`" -Action Backup -InstallRoot `"$Script:Root`" -BackupPath `"$BackupPath`" -BackupRetentionDays $BackupRetentionDays -NonInteractive$extraArgs"
     $action = New-ScheduledTaskAction -Execute $Script:PwshExe -Argument $argument

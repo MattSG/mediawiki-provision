@@ -72,6 +72,7 @@ param(
     [string]$MailUsername = $null,
     [securestring]$MailPassword = $null,
     [string]$MailFrom = $null,
+    [string]$MailPasswordText = $null,
     [string[]]$BackupAlertRecipients = @(),
     [string]$DbRootPassword = $null,
     [string]$DbUserPassword = $null,
@@ -157,6 +158,7 @@ param(
     [string]$PdfMetadataToolsZipUrl = 'https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip',
     [string]$PopplerZipUrl = $null,
     [hashtable]$DownloadChecksums = @{},
+    [switch]$AllowUnverifiedDownloads,
 
     # Corporate proxy for every download this script makes (Apache/PHP/MySQL/Python zips, GitHub
     # extension/skin archives, composer.phar, the CA bundle). Omit for direct internet access.
@@ -175,6 +177,50 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Built-in hashes pin the default artifact set. Override a value in DownloadChecksums when
+# deliberately changing a URL/version; -AllowUnverifiedDownloads is an explicit escape hatch.
+$builtInDownloadChecksums = @{
+    'gs10071w64.exe' = '3A4C28D0AAC47AA7CCCD35A5932C55110376E9DBD966898DDE388B7FABA444A4'
+    'httpd-2.4.66-251206-Win64-VS17.zip' = '2CD1F349B6705E43E784E876A233EEB1A859FA6B8ABC693A91F87B35A368F7F9'
+    'ImageMagick-7.1.2-31-Q16-x64-static.exe' = '765EEB01E4DEF9AB7DFB8E3989141A6A3FAE578B34309CC72969768CB0D2E917'
+    'mediawiki-REL1_43.zip' = '3C644E936C4128CC8DE868F85964D63793B173D7D13F9CE5BF6F35CBCB420AA3'
+    'mediawiki-skins-Vector-REL1_43.zip' = '67D5DFC2AD7BE335685E8D1F664859C21F17D35A869B693FCF84D56B981F3057'
+    'Mermaid-6.0.2.zip' = '334437EE9ECD29B05A910584C056989FEFCC0598EFBCE5768BC78B491DEC0C86'
+    'mod_fcgid-2.3.10-win64-VS17.zip' = 'CF3DED8953863C68FC522EE48F516565E67E18B180B9E5B147668C04FA5DC46D'
+    'mysql-8.4.11-winx64.zip' = 'A492371D687D2BAB088B0062581144A0044B8964BAEFDF4FAA579292B423D25C'
+    'php_apcu-5.1.28-8.3-nts-vs16-x64.zip' = '1FF653F7A7375F3EBD04D33F5DA611AAD602C80728B00C1A52143BFEC815FA17'
+    'php-8.3.33-nts-Win32-vs16-x64.zip' = '534399107056313246F424ADBBB7937337E40FBBF6AA7BC26287BA9CFD2E4A2A'
+    'python-3.14.7-embed-amd64.zip' = 'D297E5FF019966817AD8502465176139F2D3D840FA4ED84B13BED399A6AB1F15'
+    'SemanticBreadcrumbLinks-3.0.1.zip' = 'E4B5CDD3FCE8EBF2DE3439BC5B774159774AE4B482DD5C84A7EA2137CED2047B'
+    'SemanticResultFormats-5.2.0.zip' = 'AD6E0CCA6108FE1594399CA83B8C2B085C062DC45075D1FE777A494583668AA5'
+    'xpdf-tools-win-4.06.zip' = '2B6CA45DA794E7854A6468FD6C8063FDE62701F001CE03FA4F603EAB7E15A0B6'
+    'composer.phar' = 'C363EE6FF8280297F8FE6586678568FCA5226D70032383F4E0F6D03B39531EB9'
+    'cacert.pem' = 'F66DFF1BDF8F96060B8177976F8B7D9254BC89BC4DB933D769F7384D28480BC9'
+    'mediawiki-extensions-CategoryTree-REL1_43.zip' = '64330D60678374266C379F37CACEC499990974830FE5F737A26F6113F433A84C'
+    'mediawiki-extensions-Cite-REL1_43.zip' = '48D4B3DFE8D14D775C187FE148D58AC672F00B63537C9D10A7DCBA6A10C4B5E9'
+    'mediawiki-extensions-CodeMirror-REL1_43.zip' = 'E6AE7D6B2BEF7960C4EEACE097054D9A2D1A378C9B578FAE4798C4733A127CDA'
+    'mediawiki-extensions-DiscussionTools-REL1_43.zip' = '4468065A2335F5E54C3B4AB9079247BECFCC99C099CB1A1CB5D2BB8F80D09FD3'
+    'mediawiki-extensions-Echo-REL1_43.zip' = '9653AD05FC1F0BAE244416A74F7B67814C51F9C1A06E9D33CA474151A22DA424'
+    'mediawiki-extensions-Linter-REL1_43.zip' = '73918D5E5A4221423353F17AA9268C7687A354332E4EBFB083DC76FE1A348692'
+    'mediawiki-extensions-Math-REL1_43.zip' = 'A7593EA6CF825FF8A6C94C69E066E90560B91802E34E5A3867A9BDE4D08E69BC'
+    'mediawiki-extensions-MultimediaViewer-REL1_43.zip' = '8323D2EBD0615C774A3E4417025277266C619BFEA3557B4AA5CFB3BDF34F1036'
+    'mediawiki-extensions-PageForms-REL1_43.zip' = '7242927E46345A0463792D8BC2E1CF3AB9DB8E039ED11BEE0F5B3D2D1A3B16EF'
+    'mediawiki-extensions-PageImages-REL1_43.zip' = '16934EE4BFB9198C29EE4EFB7E5F09C2E2E096461EF946824CFFAB1638948BFC'
+    'mediawiki-extensions-ParserFunctions-REL1_43.zip' = '6D7784FDD2DF9AB25FAD45EFC24E899FCBF22DC90620D8ACFA1B883E72D67A75'
+    'mediawiki-extensions-PdfHandler-REL1_43.zip' = '27394CF5F5EC1F132D3D563E2E961082C3DCB5B9B6F0B95D1D0D3C7B845F1BA0'
+    'mediawiki-extensions-Popups-REL1_43.zip' = '4596C114FA9A82AA6066F93D7FB81E45E47409C70E4F743AE28BC265F200F201'
+    'mediawiki-extensions-RevisionSlider-REL1_43.zip' = '2550ED202A4FFBA15BFEF2E4FBB57CAD3474FDBEEEBB841CCB12C9CF59102648'
+    'mediawiki-extensions-Scribunto-REL1_43.zip' = '6E41856DDBE0E97A8B1100F5407A258380F84557A0CF0137A11B3340CB3C5ADA'
+    'mediawiki-extensions-SyntaxHighlight_GeSHi-REL1_43.zip' = '2CE0C4091D1E6088618FE534C73F37AED99335B62340C6B19A3B9E6D71B98665'
+    'mediawiki-extensions-TemplateData-REL1_43.zip' = 'A14F7CC94BC6FBE3A0935D2FAB3742660893F76965A1B8777561C23710D84429'
+    'mediawiki-extensions-TemplateStyles-REL1_43.zip' = '47ADAD516F5412749202211072DC88419E4C213F2DDF53E6C4E4D68892FDDD90'
+    'mediawiki-extensions-TextExtracts-REL1_43.zip' = '364D8318DA2D95464C6A82B4C8C4441D4E204CC017445C381275F509B95F182A'
+    'mediawiki-extensions-UploadWizard-REL1_43.zip' = '91F7A495473318D2F1C752E0AC4C5680EF59E609FE789ED6D453C0872B0E28A4'
+    'mediawiki-extensions-VisualEditor-REL1_43.zip' = 'BF8E088D2552BDE3DE967CC51ECE0EB56B7DEEABD4E2D094E1E7EA3AFEFEEE67'
+    'mediawiki-extensions-WikiEditor-REL1_43.zip' = 'A80C74864FD005E894A056FABFBDE3C0B55B4D38F7EF1B6BC256AFB6E73AFA08'
+}
+foreach ($name in $builtInDownloadChecksums.Keys) { if (-not $DownloadChecksums.ContainsKey($name)) { $DownloadChecksums[$name] = $builtInDownloadChecksums[$name] } }
 
 $Script:ExplicitParameterNames = @($PSBoundParameters.Keys)
 $Script:SupportedParameterNames = @($PSCmdlet.MyInvocation.MyCommand.Parameters.Keys)
@@ -213,6 +259,7 @@ function Import-ProvisionConfig {
 }
 
 Import-ProvisionConfig
+if ($MailPasswordText -and -not $MailPassword) { $MailPassword = ConvertTo-SecureString $MailPasswordText -AsPlainText -Force }
 
 # A function (not inline code) because the interactive wizard can also set $PublicUrl/$CertPath/
 # $CertKeyPath (offering to generate a local test cert on the spot) - Invoke-Up re-runs this
