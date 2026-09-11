@@ -28,12 +28,14 @@ function Invoke-Up {
 
     if (Confirm-Step 'Download/verify MediaWiki core.') { Get-MediaWikiCore }
     if (Confirm-Step 'Install SemanticMediaWiki.') { Install-SemanticMediaWiki }
+    if (Confirm-Step 'Install SemanticResultFormats and SemanticBreadcrumbLinks.') { Install-SemanticGithubComponents }
     $sso = Get-SsoConfig
     $extensionsToInstall = $Script:ZipExtensions + @(if ($sso.Enabled) { 'PluggableAuth', 'OpenIDConnect' })
     if (Confirm-Step "Install extensions: $($extensionsToInstall -join ', ').") {
         Write-Step 'Installing extensions (GitHub zip archives + composer where needed)...'
         Install-ZipComponents -Names $extensionsToInstall -SubDir 'extensions' -RepoPrefix 'mediawiki-extensions-' -MarkerFile 'extension.json'
     }
+    if (Confirm-Step 'Install the external Mermaid extension.') { Install-Mermaid }
     if (Confirm-Step "Install skins: $($Script:ZipSkins -join ', ').") {
         Write-Step 'Installing skins (GitHub zip archives)...'
         Install-ZipComponents -Names $Script:ZipSkins -SubDir 'skins' -RepoPrefix 'mediawiki-skins-' -MarkerFile 'skin.json'
@@ -42,6 +44,7 @@ function Invoke-Up {
     if (Confirm-Step 'Configure file uploads directory and permissions.') { Set-UploadsAndPermissions }
     if (Confirm-Step 'Apply caching/performance settings to LocalSettings.php.') { Set-PerformanceAndCaching }
     if (Confirm-Step 'Run update.php (database schema for core + all extensions).') { Complete-Installation }
+    if ($SeedDevelopmentContent -and (Confirm-Step 'Create the Development namespace and seed mock pages.')) { Seed-DevelopmentContent }
 
     if ($DisableJobRunner) {
         if (Confirm-Step 'Remove the background job-runner scheduled task.') { Unregister-JobRunnerTask }
@@ -162,4 +165,3 @@ function Invoke-Status {
         Write-Host "  unreachable: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
-

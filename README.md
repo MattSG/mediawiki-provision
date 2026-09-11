@@ -40,14 +40,10 @@ testing (see below) — it never runs as part of `Up`/`Down`.
   SyntaxHighlight_GeSHi's bundled Pygments zipapp has an interpreter to run
 - **MediaWiki** (`REL1_43`) with caching/perf best practices (`CACHE_ACCEL`/APCu,
   file cache for anonymous views, gzip, ResourceLoader max-age tuning)
-- A deliberately lean extension set for a small trusted-team wiki: ParserFunctions,
-  Cite, CategoryTree, InputBox, RenameUser, WikiEditor, VisualEditor,
-  PageForms, ReplaceText, CodeMirror, TemplateData, LabeledSectionTransclusion,
-  RevisionSlider, Echo, BreadCrumbs2, SyntaxHighlight_GeSHi, and SemanticMediaWiki.
-  See the comment above `$Script:ZipExtensions` in the script for what was
-  deliberately left out and why (CAPTCHA/abuse-filter/nuke tooling with nothing
-  to defend against on a closed team wiki, redundant nav-menu machinery, etc.) —
-  re-adding any of them is just adding a name back to that array.
+- The curated development/documentation extension set is defined above
+  `$Script:ZipExtensions` in `provision-mediawiki.ps1`; SemanticMediaWiki,
+  SemanticResultFormats, SemanticBreadcrumbLinks, and Mermaid are installed via
+  Composer or their upstream GitHub repository.
 - File uploads enabled with correct directory permissions
 - Optional logo (`-LogoPath`) and Entra ID SSO login (see below)
 
@@ -66,6 +62,10 @@ Windows services are set to start automatically on boot.
 # Unattended - skips the wizard, pass everything you want via parameters
 .\provision-mediawiki.ps1 -Action Up -NonInteractive
 
+# Config-driven - copy the example, edit it, then run without the wizard
+Copy-Item .\provision.config.example.psd1 .\provision.config.psd1
+.\provision-mediawiki.ps1 -ConfigPath .\provision.config.psd1
+
 # Check status
 .\provision-mediawiki.ps1 -Action Status
 
@@ -82,6 +82,19 @@ Credentials (wiki admin, DB root/app user) are written to
 invoking user via `icacls`. They're written as soon as they're known (not
 just at the end) so a run that fails partway through still leaves what's
 actually in effect discoverable on the next re-run.
+
+### Config file
+
+`provision.config.example.psd1` contains every configurable option. Copy it to
+`provision.config.psd1`, edit the values, and pass `-ConfigPath`. Config values
+are used unless the same option is supplied on the command line, so a one-off
+override such as `-Action Status` still wins. A config-driven run skips both
+the setup wizard and per-step confirmation prompts. Keep passwords and SSO
+secrets in a local config file and do not commit it.
+
+For `EntraClientSecret` and `ProxyCredential.Password`, store the encrypted
+output of `ConvertFrom-SecureString` rather than plaintext. The encrypted value
+can normally only be decrypted by the same Windows account on the same machine.
 
 ### Interactive setup
 

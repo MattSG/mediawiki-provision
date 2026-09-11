@@ -4,9 +4,9 @@
 # STEP 6: MediaWiki core (GitHub zip archive - no git dependency) + Composer
 # ---------------------------------------------------------------------------
 function Get-GitHubZip {
-    param([string]$Owner, [string]$Repo, [string]$Branch, [string]$TargetDir)
+    param([string]$Owner, [string]$Repo, [string]$Branch, [string]$TargetDir, [ValidateSet('heads', 'tags')][string]$RefType = 'heads')
     $zip = Join-Path $Script:DownloadDir "$Repo-$Branch.zip"
-    $url = "https://github.com/$Owner/$Repo/archive/refs/heads/$Branch.zip"
+    $url = "https://github.com/$Owner/$Repo/archive/refs/$RefType/$Branch.zip"
     Get-RemoteFile -Url $url -Destination $zip -VendorPageOnFailure "https://github.com/$Owner/$Repo/branches"
     Expand-ToDir -ZipPath $zip -TargetDir $TargetDir
 }
@@ -24,8 +24,43 @@ function Invoke-Composer {
     $phpExe = Join-Path $Script:PhpDir 'php.exe'
     $phar = Get-ComposerPhar
     Push-Location $WorkingDir
-    try { & $phpExe $phar @ComposerArgs --no-interaction 2>&1 | Tee-Object -Variable out | Out-Null; Add-Content $Script:LogFile $out }
+    try {
+        & $phpExe $phar @ComposerArgs --no-interaction 2>&1 | Tee-Object -Variable out | Out-Null
+        $exitCode = $LASTEXITCODE
+        Add-Content $Script:LogFile $out
+        if ($exitCode -ne 0) { throw "Composer failed with exit code $exitCode in $WorkingDir. See provision.log." }
+    }
     finally { Pop-Location }
+}
+
+function Test-ComposerInstallRequired {
+    param([string]$Dir)
+    $composerPath = Join-Path $Dir 'composer.json'
+    if (-not (Test-Path $composerPath)) { return $false }
+    $composer = Get-Content $composerPath -Raw | ConvertFrom-Json
+    $require = $composer.PSObject.Properties['require']
+    if ($null -eq $require) { return $false }
+    $packages = @($require.Value.PSObject.Properties.Name | Where-Object { $_ -notmatch '^(?:php$|ext-|lib-|composer-(?:plugin|runtime)-api$|composer/installers$)' })
+    return $packages.Count -gt 0
+}
+
+function Test-ZipComponentReady {
+    param([string]$Dir, [string]$MarkerFile, [string]$ExpectedVersion = $null)
+    if (-not (Test-Path (Join-Path $Dir $MarkerFile))) { return $false }
+    if ($ExpectedVersion) {
+        $versionMarker = Join-Path $Dir '.provision-version'
+        if (-not (Test-Path $versionMarker) -or (Get-Content $versionMarker -Raw).Trim() -ne $ExpectedVersion) { return $false }
+    }
+    if (-not (Test-ComposerInstallRequired -Dir $Dir)) { return $true }
+    if (-not (Test-Path (Join-Path $Dir '.composer-installed'))) {
+        return Test-Path (Join-Path $Dir 'vendor\autoload.php') # Accept installs made before the success marker existed.
+    }
+    $lockPath = Join-Path $Dir 'composer.lock'
+    if (Test-Path $lockPath) {
+        try { $lock = Get-Content $lockPath -Raw | ConvertFrom-Json } catch { return $false }
+        if (@($lock.packages).Count -gt 0 -and -not (Test-Path (Join-Path $Dir 'vendor\autoload.php'))) { return $false }
+    }
+    return $true
 }
 
 function Get-MediaWikiCore {
@@ -63,7 +98,7 @@ function Install-ZipComponents {
     param([string[]]$Names, [string]$SubDir, [string]$RepoPrefix, [string]$MarkerFile)
     foreach ($name in $Names) {
         $dir = Join-Path $Script:WwwDir "$SubDir\$name"
-        if (Test-Path (Join-Path $dir $MarkerFile)) { Write-Note "$name already present, skipping."; continue }
+        if (Test-ZipComponentReady -Dir $dir -MarkerFile $MarkerFile) { Write-Note "$name already present, skipping."; continue }
         if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
         Write-Note "Downloading $name ($MwBranch)..."
         try {
@@ -72,8 +107,9 @@ function Install-ZipComponents {
             Write-Warn "could not download $name for branch $MwBranch - skipping. ($($_.Exception.Message))"
             continue
         }
-        if (Test-Path (Join-Path $dir 'composer.json')) {
+        if (Test-ComposerInstallRequired -Dir $dir) {
             Invoke-Composer -ComposerArgs @('install', '--no-dev') -WorkingDir $dir
+            New-Item -ItemType File -Path (Join-Path $dir '.composer-installed') -Force | Out-Null
         }
     }
 }
@@ -82,16 +118,57 @@ function Install-ZipComponents {
 # plain GitHub zip like the other extensions above).
 function Install-SemanticMediaWiki {
     $smwDir = Join-Path $Script:WwwDir 'extensions\SemanticMediaWiki'
-    if (Test-Path $smwDir) { Write-Note 'SemanticMediaWiki already present, skipping.'; return }
+    $smwMarker = Join-Path $smwDir '.composer-installed'
+    $smwVersion = '7.2.1'
+    if ((Test-Path (Join-Path $smwDir 'extension.json')) -and (Test-Path $smwMarker) -and
+        (Test-Path (Join-Path $smwDir '.provision-version')) -and
+        (Get-Content (Join-Path $smwDir '.provision-version') -Raw).Trim() -eq $smwVersion) {
+        Write-Note 'SemanticMediaWiki already present, skipping.'
+        return
+    }
     Write-Step 'Installing SemanticMediaWiki via Composer (upstream-recommended method)...'
     $composerLocal = Join-Path $Script:WwwDir 'composer.local.json'
-    if (-not (Test-Path $composerLocal)) {
-        # ~4.5 doesn't exist (SMW jumps 4.2.0 -> 5.0.0) - allow any current major so Composer can
-        # resolve whichever is compatible with the installed MediaWiki core version.
-        @{ require = @{ 'mediawiki/semantic-media-wiki' = '^5.0 || ^6.0 || ^7.0' } } | ConvertTo-Json | Set-Content $composerLocal
+    $composerConfig = if (Test-Path $composerLocal) { Get-Content $composerLocal -Raw | ConvertFrom-Json } else { [pscustomobject]@{ require = [pscustomobject]@{} } }
+    if (-not $composerConfig.require) { $composerConfig | Add-Member -NotePropertyName require -NotePropertyValue ([pscustomobject]@{}) }
+    $composerConfig.require | Add-Member -Force -NotePropertyName 'mediawiki/semantic-media-wiki' -NotePropertyValue $smwVersion
+    foreach ($package in @('mediawiki/semantic-result-formats', 'mediawiki/semantic-breadcrumb-links')) {
+        $composerConfig.require.PSObject.Properties.Remove($package)
     }
+    $composerConfig | ConvertTo-Json -Depth 5 | Set-Content $composerLocal
     Invoke-Composer -ComposerArgs @('update', 'mediawiki/semantic-media-wiki', '--no-dev') -WorkingDir $Script:WwwDir
-    if (-not (Test-Path $smwDir)) { Write-Warn 'SemanticMediaWiki did not install via Composer - check provision.log.' }
+    if (-not (Test-Path (Join-Path $smwDir 'extension.json'))) { throw 'SemanticMediaWiki did not install via Composer - check provision.log.' }
+    New-Item -ItemType File -Path $smwMarker -Force | Out-Null
+    Set-Content -Path (Join-Path $smwDir '.provision-version') -Value $smwVersion
+}
+
+function Install-SemanticGithubComponents {
+    foreach ($component in @(
+        @{ Name = 'SemanticResultFormats'; Repo = 'SemanticResultFormats'; Tag = '5.2.0' },
+        @{ Name = 'SemanticBreadcrumbLinks'; Repo = 'SemanticBreadcrumbLinks'; Tag = '3.0.1' }
+    )) {
+        $dir = Join-Path $Script:WwwDir "extensions\$($component.Name)"
+        if (Test-ZipComponentReady -Dir $dir -MarkerFile 'extension.json' -ExpectedVersion $component.Tag) { Write-Note "$($component.Name) already present, skipping."; continue }
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+        Get-GitHubZip -Owner 'SemanticMediaWiki' -Repo $component.Repo -Branch $component.Tag -RefType 'tags' -TargetDir $dir
+        if (Test-ComposerInstallRequired -Dir $dir) {
+            Invoke-Composer -ComposerArgs @('install', '--no-dev', '--no-security-blocking') -WorkingDir $dir
+            New-Item -ItemType File -Path (Join-Path $dir '.composer-installed') -Force | Out-Null
+        }
+        Set-Content -Path (Join-Path $dir '.provision-version') -Value $component.Tag
+    }
+}
+
+function Install-Mermaid {
+    $dir = Join-Path $Script:WwwDir 'extensions\Mermaid'
+    $mermaidVersion = '6.0.2'
+    if (Test-ZipComponentReady -Dir $dir -MarkerFile 'extension.json' -ExpectedVersion $mermaidVersion) { Write-Note 'Mermaid already present, skipping.'; return }
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    Get-GitHubZip -Owner 'SemanticMediaWiki' -Repo 'Mermaid' -Branch $mermaidVersion -RefType 'tags' -TargetDir $dir
+    if (Test-ComposerInstallRequired -Dir $dir) {
+        Invoke-Composer -ComposerArgs @('install', '--no-dev', '--no-security-blocking') -WorkingDir $dir
+        New-Item -ItemType File -Path (Join-Path $dir '.composer-installed') -Force | Out-Null
+    }
+    Set-Content -Path (Join-Path $dir '.provision-version') -Value $mermaidVersion
 }
 
 # Newer MediaWiki versions dispatch maintenance scripts through maintenance\run.php <name>;
@@ -107,11 +184,13 @@ function Invoke-MaintenanceScript {
         $runner = @(if (Test-Path 'maintenance\run.php') { @('maintenance\run.php') + $ModernArgs } else { "maintenance\$LegacyName" })
         if ($LogOutput) {
             & $phpExe @runner @ExtraArgs 2>&1 | Tee-Object -Variable out | Out-Null
+            $exitCode = $LASTEXITCODE
             Add-Content $Script:LogFile $out
         } else {
             & $phpExe @runner @ExtraArgs
-            if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
+            $exitCode = $LASTEXITCODE
         }
+        if ($exitCode -ne 0) { throw $FailureMessage }
     } finally { Pop-Location }
 }
 
@@ -177,7 +256,8 @@ function Set-PerformanceAndCaching {
 $($Script:MarkerBegin)
 // --- Object/parser/session cache: APCu if available, otherwise DB (see provision.log) ---
 `$wgMainCacheType    = $cacheType;
-`$wgSessionCacheType  = $cacheType;
+// APCu is process-local under Apache/FastCGI; sessions must survive worker changes.
+`$wgSessionCacheType  = CACHE_DB;
 `$wgMessageCacheType  = $cacheType;
 `$wgParserCacheType   = $cacheType;
 
@@ -205,6 +285,8 @@ $($Script:MarkerBegin)
 `$wgEnableWriteAPI    = true;
 `$wgDefaultSkin       = 'vector-2022';
 `$wgServer            = '$(if ($Script:UseHttps) { $PublicUrl } else { "http://localhost:$HttpPort" })';
+`$wgAllowUserCss      = false;
+`$wgAllowUserJs       = false;
 $debugLine
 // wgShowExceptionDetails alone doesn't cover every debug-leak surface in Prod.
 `$wgShowSQLErrors        = $(if ($Environment -eq 'Prod') { 'false' } else { 'true' });
@@ -230,9 +312,12 @@ $logoLine
         if (Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) { $block += "`nwfLoadExtension( '$ext' );" }
     }
     if (Test-Path (Join-Path $Script:WwwDir 'extensions\SemanticMediaWiki')) {
-        # enableSemantics() alone is deprecated in modern SMW - it now requires the explicit
-        # wfLoadExtension call first (see extensions/SemanticMediaWiki/docs/INSTALL.md).
-        $block += "`nwfLoadExtension( 'SemanticMediaWiki' );`nenableSemantics( 'localhost:$HttpPort' );"
+        $block += "`nwfLoadExtension( 'SemanticMediaWiki' );"
+    }
+    foreach ($ext in @('SemanticResultFormats', 'SemanticBreadcrumbLinks', 'Mermaid')) {
+        if ((Test-Path (Join-Path $Script:WwwDir "extensions\$ext")) -and ($block -notmatch "wfLoadExtension\( '$ext' \)")) {
+            $block += "`nwfLoadExtension( '$ext' );"
+        }
     }
     $syntaxHighlightDir = Join-Path $Script:WwwDir 'extensions\SyntaxHighlight_GeSHi'
     $pythonExe = Join-Path $Script:PythonDir 'python.exe'
@@ -272,6 +357,24 @@ wfLoadExtension( 'OpenIDConnect' );
     }
 
     $block += "`n$($Script:MarkerEnd)"
+    $hasDevelopmentNamespaces = $SeedDevelopmentContent -or
+        (Test-Path (Join-Path $Script:ProvDir 'development-content.seeded')) -or
+        (Test-Path (Join-Path $Script:ProvDir 'namespace-homes.seeded'))
+    if ($hasDevelopmentNamespaces) {
+        $block = $block -replace [regex]::Escape($Script:MarkerEnd), @"
+
+// --- Local development content ---
+`$wgExtraNamespaces[100] = 'Development';
+`$wgExtraNamespaces[101] = 'Development_talk';
+`$wgExtraNamespaces[102] = 'HR';
+`$wgExtraNamespaces[103] = 'HR_talk';
+`$wgExtraNamespaces[104] = 'Projects';
+`$wgExtraNamespaces[105] = 'Projects_talk';
+`$wgExtraNamespaces[106] = 'Operations';
+`$wgExtraNamespaces[107] = 'Operations_talk';
+$($Script:MarkerEnd)
+"@
+    }
     Add-ManagedSettingsBlock -Block $block
 }
 
@@ -280,5 +383,92 @@ wfLoadExtension( 'OpenIDConnect' );
 function Complete-Installation {
     Write-Step 'Running update.php (schema for core + all extensions)...'
     Invoke-MaintenanceScript -LegacyName 'update.php' -ModernArgs @('update') -ExtraArgs @('--quick') -LogOutput
+}
+
+function Seed-DevelopmentContent {
+    $marker = Join-Path $Script:ProvDir 'development-content.seeded'
+    if (Test-Path $marker) {
+        Write-Note 'Development namespace/content already seeded.'
+        Seed-NamespaceHomePages
+        return
+    }
+
+    Write-Step 'Seeding Development namespace mock pages...'
+    $dump = Join-Path $Script:ProvDir 'development-content.xml'
+    $siteNameXml = [System.Security.SecurityElement]::Escape([string]$SiteName)
+    $dbNameXml = [System.Security.SecurityElement]::Escape([string]$Script:DbName)
+    $adminUserXml = [System.Security.SecurityElement]::Escape([string]$WikiAdminUser)
+    @"
+<?xml version="1.0" encoding="UTF-8"?>
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/" xml:lang="en" version="0.10">
+  <siteinfo><sitename>$siteNameXml</sitename><dbname>$dbNameXml</dbname><base>http://localhost:$HttpPort/</base><generator>provision-mediawiki.ps1</generator><case>first-letter</case><namespaces><namespace key="0" /></namespaces></siteinfo>
+  <page><title>Development:Welcome</title><ns>100</ns><id>1001</id><revision><id>10001</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed development content</comment><text xml:space="preserve">Welcome to the Development namespace.
+
+This is disposable mock content for local development and UI testing.</text></revision></page>
+  <page><title>Development:Mock API</title><ns>100</ns><id>1002</id><revision><id>10002</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed development content</comment><text xml:space="preserve">== Mock API ==
+
+* GET `/api/mock/health` → `{"status":"ok"}`
+* GET `/api/mock/items` → three sample items
+* POST `/api/mock/items` → not implemented in this fixture</text></revision></page>
+  <page><title>Development:Sample Project</title><ns>100</ns><id>1003</id><revision><id>10003</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed development content</comment><text xml:space="preserve">== Sample project ==
+
+;Status: Prototype
+;Owner: Development team
+;Next: Replace this page with real project notes.</text></revision></page>
+</mediawiki>
+"@ | Set-Content -Path $dump -Encoding UTF8
+    Invoke-MaintenanceScript -LegacyName 'importDump.php' -ModernArgs @('importDump') -ExtraArgs @($dump) -FailureMessage 'Development content import failed.' -LogOutput
+    New-Item -ItemType File -Path $marker -Force | Out-Null
+    Seed-NamespaceHomePages
+}
+
+function Seed-NamespaceHomePages {
+    $marker = Join-Path $Script:ProvDir 'namespace-homes.seeded'
+    if (Test-Path $marker) { Write-Note 'Namespace home pages already seeded.'; return }
+
+    Write-Step 'Seeding namespace home pages...'
+    $dump = Join-Path $Script:ProvDir 'namespace-homes.xml'
+    $siteNameXml = [System.Security.SecurityElement]::Escape([string]$SiteName)
+    $dbNameXml = [System.Security.SecurityElement]::Escape([string]$Script:DbName)
+    $adminUserXml = [System.Security.SecurityElement]::Escape([string]$WikiAdminUser)
+    $seedTimestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    @"
+<?xml version="1.0" encoding="UTF-8"?>
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/" xml:lang="en" version="0.10">
+  <siteinfo><sitename>$siteNameXml</sitename><dbname>$dbNameXml</dbname><base>http://localhost:$HttpPort/</base><generator>provision-mediawiki.ps1</generator><case>first-letter</case><namespaces><namespace key="0" /></namespaces></siteinfo>
+  <page><title>Main Page</title><ns>0</ns><id>1100</id><revision><id>11000</id><timestamp>$seedTimestamp</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Create namespace home hub</comment><text xml:space="preserve">= Wiki home =
+
+Welcome to $siteNameXml.
+
+== Spaces ==
+
+* [[Development:Main Page|Development]]
+* [[HR:Main Page|HR]]
+* [[Projects:Main Page|Projects]]
+* [[Operations:Main Page|Operations]]
+
+== History test ==
+
+Use the page history to compare this revision with the earlier test revisions.</text></revision></page>
+  <page><title>Development:Main Page</title><ns>100</ns><id>1101</id><revision><id>11001</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed namespace home</comment><text xml:space="preserve">== Development ==
+
+Development notes, prototypes, and technical experiments.
+
+* [[Development:Welcome|Welcome]]
+* [[Development:Mock API|Mock API]]
+* [[Development:Sample Project|Sample Project]]</text></revision></page>
+  <page><title>HR:Main Page</title><ns>102</ns><id>1102</id><revision><id>11002</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed namespace home</comment><text xml:space="preserve">== HR ==
+
+People operations, onboarding, policies, and team information.</text></revision></page>
+  <page><title>Projects:Main Page</title><ns>104</ns><id>1103</id><revision><id>11003</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed namespace home</comment><text xml:space="preserve">== Projects ==
+
+Project briefs, plans, decisions, and delivery notes.</text></revision></page>
+  <page><title>Operations:Main Page</title><ns>106</ns><id>1104</id><revision><id>11004</id><timestamp>2026-01-01T00:00:00Z</timestamp><contributor><username>$adminUserXml</username></contributor><comment>Seed namespace home</comment><text xml:space="preserve">== Operations ==
+
+Runbooks, service notes, recurring procedures, and operational records.</text></revision></page>
+</mediawiki>
+"@ | Set-Content -Path $dump -Encoding UTF8
+    Invoke-MaintenanceScript -LegacyName 'importDump.php' -ModernArgs @('importDump') -ExtraArgs @($dump) -FailureMessage 'Namespace home import failed.' -LogOutput
+    New-Item -ItemType File -Path $marker -Force | Out-Null
 }
 

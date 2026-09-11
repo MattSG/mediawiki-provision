@@ -54,6 +54,9 @@ function Save-DbCredentials {
     $lines = @("Generated $(Get-Date -Format o)")
     if ($RootPass) { $lines += "DB root pass:    $RootPass" }
     $lines += "DB user pass:    $UserPass"
+    if (Test-Path $Script:CredFile) {
+        $lines += Get-Content $Script:CredFile | Where-Object { $_ -notmatch '^(?:Generated |DB root pass:|DB user pass:)' }
+    }
     $lines -join "`r`n" | Set-Content -Path $Script:CredFile
     icacls $Script:CredFile /inheritance:r /grant:r "$($env:USERNAME):F" "SYSTEM:F" | Out-Null
 }
@@ -235,4 +238,3 @@ function Expand-ToDir {
     }
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
-

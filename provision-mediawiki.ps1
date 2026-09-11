@@ -27,6 +27,11 @@
   Single centralized folder everything lives under (apache/php/mysql/www/cache/logs/
   _provisioning) - back the whole tree up by copying this one directory. Default: C:\MediaWikiStack
 
+.PARAMETER ConfigPath
+  Path to a PowerShell data file containing parameter values. Config values are used unless
+  the same option is supplied on the command line. Using a config file also enables the
+  non-interactive path; copy provision.config.example.psd1 to create one.
+
 .EXAMPLE
   ./provision-mediawiki.ps1
   Full one-click native install, port 8080.
@@ -66,6 +71,8 @@ param(
     [string]$DbUserPassword = $null,
     [int]$HttpPort = 8080,
     [int]$DbPort = 3306,
+
+    [string]$ConfigPath = $null,
 
     # By default the script provisions its own isolated MySQL under InstallRoot. Set this to
     # point at a MySQL instance that already exists on the network/machine instead - Invoke-Up
@@ -146,12 +153,50 @@ param(
 
     [switch]$Force,
 
+    [switch]$SeedDevelopmentContent,
+
     [ValidateSet('Dev', 'Prod')]
     [string]$Environment = 'Dev'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$Script:ExplicitParameterNames = @($PSBoundParameters.Keys)
+$Script:SupportedParameterNames = @($PSCmdlet.MyInvocation.MyCommand.Parameters.Keys)
+
+function Import-ProvisionConfig {
+    if (-not $ConfigPath) { return }
+
+    $configFile = (Resolve-Path -LiteralPath $ConfigPath -ErrorAction Stop).Path
+    $config = Import-PowerShellDataFile -LiteralPath $configFile
+    if ($config -isnot [hashtable]) { throw "Config file must contain a hashtable: $configFile" }
+
+    foreach ($key in $config.Keys) {
+        if ($key -eq 'ConfigPath' -or $Script:SupportedParameterNames -notcontains [string]$key) {
+            throw "Unknown configuration option '$key' in $configFile"
+        }
+        if ($Script:ExplicitParameterNames -contains $key) { continue }
+
+        $value = $config[$key]
+        if ($key -eq 'EntraClientSecret' -and $value -is [string] -and $value) {
+            $value = ConvertTo-SecureString -String $value
+        } elseif ($key -eq 'ProxyCredential' -and $value -is [hashtable]) {
+            if (-not $value.UserName -or -not $value.Password) { throw "ProxyCredential requires UserName and Password in $configFile" }
+            $value = New-Object System.Management.Automation.PSCredential(
+                [string]$value.UserName,
+                (ConvertTo-SecureString -String ([string]$value.Password)))
+        }
+        Set-Variable -Name $key -Value $value -Scope Script
+    }
+
+    if ($Action -notin @('Up', 'Down', 'Status', 'Restart', 'Backup')) { throw "Invalid Action in ${configFile}: $Action" }
+    if ($Environment -notin @('Dev', 'Prod')) { throw "Invalid Environment in ${configFile}: $Environment" }
+    $Script:NonInteractive = $true
+    Write-Host "Loaded configuration: $configFile" -ForegroundColor DarkGray
+}
+
+Import-ProvisionConfig
 
 # A function (not inline code) because the interactive wizard can also set $PublicUrl/$CertPath/
 # $CertKeyPath (offering to generate a local test cert on the spot) - Invoke-Up re-runs this
@@ -202,36 +247,14 @@ $Script:MarkerEnd         = '# === provision-mediawiki.ps1 managed block: END ==
 $Script:TaskFolder        = '\MediaWikiStack\'
 $Script:SelfPath          = $PSCommandPath
 
-# Curated, deliberately LEAN extension set for a small trusted-team dev wiki - every entry
-# below earns its place; each cut is recorded so it isn't re-added by accident.
-#
-# Excluded - heavier/out-of-scope for a single-box, no-extra-services install:
-#   CirrusSearch (needs a separate Elasticsearch cluster), PdfHandler (needs Ghostscript),
-#   Mermaid/EmbedVideo (not wikimedia/ GitHub repos - Composer- or non-standard-source only).
-# Excluded after review - low value for THIS use case (small trusted team, no open registration,
-# no spam/abuse surface, few concurrent editors):
-#   CheckUser (abuse investigation on untrusted wikis), RelatedArticles (no-op without Cirrus),
-#   ConfirmEdit (CAPTCHA/anti-spam - nothing to defend against on a closed team wiki),
-#   Nuke (bulk-delete for spam cleanup), AbuseFilter (per-edit rule engine - pure overhead when
-#   trusted), Interwiki (cross-wiki-federation admin page - unused if not federating), Math
-#   (LaTeX rendering pipeline - rarely needed for software docs, easy to re-add if it is),
-#   TemplateWizard (GUI sugar - TemplateData already covers the real need), TwoColConflict
-#   (edit-conflict UI - rare with few concurrent editors), StructuredNavigation/DynamicSidebar
-#   (nav-menu machinery beyond what most small teams configure/maintain), Scribunto (Lua
-#   scripting for complex templates - not needed unless templates get non-trivial), Lockdown
-#   (namespace/group access gating - config-file only, no admin UI for assigning permissions).
+# Curated development/documentation extension set. Names here must match the extension
+# directory and wfLoadExtension() name; SyntaxHighlight is the upstream SyntaxHighlight_GeSHi repo.
 $Script:ZipExtensions = @(
-    'ParserFunctions', 'Cite', 'CategoryTree', 'InputBox',
-    'RenameUser', 'WikiEditor', 'VisualEditor', 'PageForms', 'ReplaceText',
-    'CodeMirror',                  # syntax-aware wikitext editing (no extra dependency)
-    'TemplateData',                # template parameter docs, pairs with VisualEditor/PageForms
-    'LabeledSectionTransclusion',  # reuse page sections across docs (reduce duplication)
-    'RevisionSlider',              # visual diff/revision-comparison slider
-    'Echo',                        # talk-page/mention notifications (skip email digests without a job-runner cron)
-    'BreadCrumbs2',                # Home > Category > Page trail (define via MediaWiki:Breadcrumbs)
-    # Needs a Python interpreter to run its bundled, self-contained Pygments zipapp - provisioned
-    # into $Script:PythonDir by Install-Python (a real Windows Server box has none by default).
-    'SyntaxHighlight_GeSHi'
+    'VisualEditor', 'WikiEditor', 'CodeMirror', 'TemplateData', 'TemplateStyles',
+    'ParserFunctions', 'Cite', 'CategoryTree', 'RevisionSlider', 'Echo',
+    'DiscussionTools', 'Linter', 'Scribunto', 'UploadWizard',
+    'Popups', 'PageImages', 'TextExtracts', 'MultimediaViewer',
+    'SyntaxHighlight_GeSHi', 'Math', 'PdfHandler', 'PageForms'
 )
 
 # Skins are git submodules in core's own repo too (see the empty-placeholder-dir cleanup in
